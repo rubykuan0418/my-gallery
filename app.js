@@ -28,6 +28,7 @@ const I = {
   refresh: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M20 4v5h-5M4 20v-5h5"/></svg>',
   zoom: '<svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20M10.5 7.5v6M7.5 10.5h6"/></svg>',
   trash: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  eye: '<svg class="ic s" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   x: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   star: (c = '#EBD49A', s = 26) => `<svg width="${s}" height="${s}" viewBox="0 0 80 80" aria-hidden="true"><path d="M40 2l9 26 28-3-22 17 12 27-26-15-21 20 5-28L2 34l29-6z" fill="${c}"/></svg>`,
   leaf: (c = '#EBCDC2', w = 90) => `<svg width="${w}" height="${w * 1.45}" viewBox="0 0 100 150" aria-hidden="true"><path d="M50 2c8 10-4 16 6 24 12-6 18 4 10 10-8 4-14 2-14 10 10-2 18 8 8 14-8 4-12-2-16 6 8 2 12 12 2 14-6 0-8-6-12-2 2 10-4 18-10 18-4-10 2-16-6-22-8 4-16-4-8-10 6-4 10 0 12-8-8 0-14-8-6-14 6-4 10 2 12-6-6-4-6-14 2-14 4 0 6 4 8 0-2-8 4-14 12-20z" fill="${c}"/></svg>`,
@@ -114,7 +115,7 @@ const eligible = () => S.works.filter(w => w.status === 'ready' && !w.isCopy && 
 function go(name, p = {}) { S.stack.push(S.route); S.route = { name, p }; resetUi(); render(); scrollTo(0, 0); }
 function tab(name) { S.stack = []; S.route = { name, p: {} }; resetUi(); render(); scrollTo(0, 0); }
 function back() { S.route = S.stack.pop() || { name: 'home', p: {} }; resetUi(); render(); scrollTo(0, 0); }
-function resetUi() { Object.assign(S.ui, { sheet: null, showLong: false, editInfo: false, writing: false, photoIdx: 0, editName: false, pick: false, renamePlace: false }); }
+function resetUi() { Object.assign(S.ui, { editThought: null, sheet: null, showLong: false, editInfo: false, writing: false, photoIdx: 0, editName: false, pick: false, renamePlace: false }); }
 function ask(msg, okText = '確定', danger = true) {
   return new Promise(res => {
     const wrap = document.createElement('div');
@@ -245,6 +246,10 @@ function viewWork() {
   <p class="sec">${w.kind === 'street' ? '關於它' : '作品解說'}</p><p style="margin:0">${esc(S.ui.showLong && w.long ? w.long : w.short)}</p>
   <div class="row wrap">${w.long ? `<button class="linkbtn" data-act="showLong">${S.ui.showLong ? '收起' : '看完整解說'}</button>` : ''}<button class="linkbtn" data-act="reanalyze">${S.ui.busy[w.id] ? '整理中…' : '依新資料重寫解說'}</button></div>
   <p class="muted tiny" style="margin:2px 0 0">AI 解說・${esc(prov.name)}${w.labelUsed ? '・已用你拍的說明牌校正' : ''}</p>`;
+  if (w.status === 'ready') {
+    if ((w.lookFor || []).length) h += lookForHtml(w.lookFor);
+    else h += `<button class="btn" data-act="makeLookFor" style="margin-top:18px">${S.ui.busy.look ? '<span class="spin"></span> 整理中…' : I.eye + '看看觀賞重點'}</button>`;
+  }
   if (w.artist && w.status === 'ready' && w.kind !== 'street') {
     const ad = S.artist[norm(w.artistOriginal || w.artist)];
     if (ad) h += artistCard(ad, w);
@@ -252,13 +257,24 @@ function viewWork() {
   }
   h += `<div style="margin-top:32px"><div class="row" style="justify-content:space-between"><h2 class="serif" style="margin:0;font-size:24px">我的感想</h2><span class="muted small">${(w.thoughts || []).length ? w.thoughts.length + ' 筆' : ''}</span></div>`;
   if (!(w.thoughts || []).length) h += `<div class="card row" style="margin-top:12px;background:var(--sand);align-items:flex-start">${I.star()}<p style="margin:0">還沒有留下感想。想起什麼的時候，寫一句或錄一段都好。</p></div>`;
-  (w.thoughts || []).forEach((t, i) => { h += `<div class="card" style="margin-top:12px;background:${['#F4E3DD', '#E3EADD', '#F7EDCF'][i % 3]}"><p class="muted small" style="margin:0">${fmtDate(ymd(t.at))}・${t.kind === 'voice' ? '語音感想' : '文字感想'}</p>${t.kind === 'voice' && t.audio ? `<audio controls preload="none" src="${thoughtUrl(t)}" style="width:100%;margin:6px 0"></audio>` : ''}<p style="margin:0">${esc(t.text || '')}</p></div>`; });
+  (w.thoughts || []).forEach((t, i) => {
+    const editing = S.ui.editThought === t.id;
+    h += `<div class="card" style="margin-top:12px;background:${['#F4E3DD', '#E3EADD', '#F7EDCF'][i % 3]}"><p class="muted small" style="margin:0">${fmtDate(ymd(t.at))}・${t.kind === 'voice' ? '語音感想' : '文字感想'}${t.edited ? '・已修改' : ''}</p>${t.kind === 'voice' && t.audio ? `<audio controls preload="none" src="${thoughtUrl(t)}" style="width:100%;margin:6px 0"></audio>` : ''}`;
+    if (editing) h += `<label class="lab" for="thIn" style="margin-top:6px">修改感想</label><textarea id="thIn" class="field" rows="3">${esc(t.text || '')}</textarea><div class="row" style="margin-top:8px"><button class="btn white grow" data-act="editThought" data-id="">取消</button><button class="btn solid grow" data-act="saveThought" data-id="${t.id}">存下來</button></div>`;
+    else h += `<p style="margin:0">${esc(t.text || '')}</p><div class="row" style="margin-top:6px;gap:4px"><button class="linkbtn" data-act="editThought" data-id="${t.id}">修改</button><button class="linkbtn" data-act="deleteThought" data-id="${t.id}" style="color:var(--ink2)">刪除</button></div>`;
+    h += `</div>`;
+  });
   if (S.ui.writing) h += `<div style="margin-top:14px"><label class="lab" for="noteIn">想留下什麼？</label><textarea id="noteIn" class="field" rows="3" placeholder="寫一句就好"></textarea><div class="row" style="margin-top:10px"><button class="btn grow" data-act="write">取消</button><button class="btn solid grow" data-act="saveNote">存下來</button></div></div>`;
   else if (S.rec && S.rec.workId === w.id) h += `<div class="card row" role="status" style="margin-top:14px">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<strong class="grow">錄音中…</strong><button class="btn solid" data-act="stopRec">結束</button></div>`;
   else h += `<div class="row" style="margin-top:16px"><button class="btn grow" data-act="addPhotos">${I.img}補照片</button><button class="btn grow" data-act="write">${I.pen}寫感想</button><button class="btn grow" data-act="startRec">${I.mic}錄音</button></div>`;
   h += `<p class="muted small" style="margin-top:22px">點右上角的愛心標成「最喜歡」，你的美感 DNA 會更準。</p><button class="linkbtn" data-act="deleteWork" style="color:var(--accent)">刪除這件作品</button></div></main>${nav('home')}`;
   if (S.ui.sheet) h += sheetHtml(w, p, ps);
   return h;
+}
+const ASPECT_BG = { '用色': 'var(--pink)', '線條': 'var(--sky)', '構圖': 'var(--butter)', '光線': 'var(--butter)', '筆觸': 'var(--sage)', '細節': 'var(--sky)', '材質': 'var(--sage)', '象徵': 'var(--pink)', '歷史背景': 'var(--sand)', '畫家心境': 'var(--pink)' };
+function lookForHtml(list, compact) {
+  const items = compact ? list.slice(0, 2) : list;
+  return `<div style="margin-top:${compact ? 12 : 22}px;${compact ? '' : 'background:var(--card);border-radius:30px 16px 34px 14px;padding:16px 18px 6px'}"><p class="sec" style="margin:0 0 10px">${I.eye} 留心看這裡</p>${items.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px"><span class="chip" style="flex:none;background:${ASPECT_BG[x.aspect] || 'var(--sand)'};margin-top:1px">${esc(x.aspect || '細節')}</span><span style="line-height:1.65">${esc(x.text)}</span></div>`).join('')}</div>`;
 }
 function artistCard(ad, w) {
   return `<div style="margin-top:28px;background:var(--card);border-radius:36px 18px 40px 16px;overflow:hidden"><div style="background:var(--butter);padding:18px 20px 14px;position:relative;overflow:hidden"><div style="position:absolute;right:-8px;top:-12px">${I.blob('#EFD9A0', 76)}</div>
@@ -302,7 +318,7 @@ function viewCamera() {
   else if (lw) {
     const m = mainPhoto(lw);
     h += `<div class="result"><div class="hd"><div class="grow"><span class="chip" style="background:var(--card)">${lw.status === 'pending' ? '待辨識' : seenDates(lw).length > 1 ? '第 ' + seenDates(lw).length + ' 次見到' : lw.kind === 'street' ? '路上的小美好' : '第一次見到'}</span><h2 class="serif" style="margin:6px 0 0;font-size:24px;line-height:1.3">${esc(lw.title)}</h2>${titleSub(lw)}<p class="muted small" style="margin:2px 0 0">${artistHtml(lw, '')}${lw.year ? '・' + esc(lw.year) : ''}</p></div>${m ? `<img src="${purl(m)}" alt="">` : ''}</div>
-    <div style="padding:14px 16px 16px"><p style="margin:0 0 12px">${esc(lw.status === 'pending' ? (lw.error || '有網路後會自動辨識。') : lw.short || '')}</p><div class="grid2" style="gap:8px"><button class="btn" data-act="go" data-to="work" data-id="${lw.id}">完整解說</button><button class="btn" data-act="startRec" data-id="${lw.id}">${I.mic}說感想</button><button class="btn" data-act="fixLast" data-id="${lw.id}">這不對</button><button class="btn solid" data-act="dismissLast">繼續看展</button></div></div></div>`;
+    <div style="padding:14px 16px 16px"><p style="margin:0 0 12px">${esc(lw.status === 'pending' ? (lw.error || '有網路後會自動辨識。') : lw.short || '')}</p>${(lw.lookFor || []).length ? lookForHtml(lw.lookFor, true) : ''}<div class="grid2" style="gap:8px"><button class="btn" data-act="go" data-to="work" data-id="${lw.id}">完整解說</button><button class="btn" data-act="startRec" data-id="${lw.id}">${I.mic}說感想</button><button class="btn" data-act="fixLast" data-id="${lw.id}">這不對</button><button class="btn solid" data-act="dismissLast">繼續看展</button></div></div></div>`;
   }
   if (S.rec) h += `<div class="pill row" role="status">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<span class="grow"><strong>錄音中</strong><br><span class="muted tiny">再按一次麥克風就結束</span></span></div>`;
   h += `</div>`;
@@ -518,7 +534,7 @@ function applyAI(w, r, opts = {}) {
   const keep = (a, b) => (b != null && b !== '' ? b : a);
   Object.assign(w, {
     title: keep(w.title, r.title), titleOriginal: keep(w.titleOriginal, r.titleOriginal), artist: keep(w.artist, r.artist), artistOriginal: keep(w.artistOriginal, r.artistOriginal),
-    year: keep(w.year, r.year), medium: keep(w.medium, r.medium), short: keep(w.short, r.short), long: keep(w.long, r.long), labelText: keep(w.labelText, r.labelText),
+    year: keep(w.year, r.year), medium: keep(w.medium, r.medium), short: keep(w.short, r.short), lookFor: (r.lookFor && r.lookFor.length) ? r.lookFor : (w.lookFor || []), long: keep(w.long, r.long), labelText: keep(w.labelText, r.labelText),
     confidence: r.confidence || w.confidence || 'medium', isCopy: !!r.isCopy, dims: r.dims || w.dims, subjects: (r.subjects && r.subjects.length) ? r.subjects : (w.subjects || []),
     kind: r.isStreet ? 'street' : 'artwork', aiProvider: AI.state.lastProvider || S.settings.provider, status: 'ready', error: ''
   });
@@ -818,6 +834,15 @@ const ACT = {
     try { const k = norm(w.artistOriginal || w.artist); const works = S.works.filter(x => norm(x.artistOriginal || x.artist) === k).map(x => x.title); S.artist[k] = await AI.artistDna(S.settings, { artist: w.artist, artistOriginal: w.artistOriginal, works }); await DB.setKV('artist', S.artist); }
     catch (e) { toast(e.message); }
     delete S.ui.busy.artist; bgRender();
+  },
+  editThought: d => { S.ui.editThought = d.id || null; render(); if (d.id) setTimeout(() => { const el = $('#thIn'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 50); },
+  saveThought: async d => { const w = workOf(S.route.p.id); const t = (w.thoughts || []).find(x => x.id === d.id); const v = $('#thIn').value.trim(); if (t && v && v !== t.text) { t.text = v; t.edited = Date.now(); await saveWork(w); toast('感想已更新。'); } S.ui.editThought = null; render(); },
+  deleteThought: async d => { const w = workOf(S.route.p.id); const t = (w.thoughts || []).find(x => x.id === d.id); if (!t) return; if (!await ask(t.kind === 'voice' ? '要刪除這段語音感想嗎？錄音和文字都會一起刪除。' : '要刪除這則感想嗎？', '刪除')) return; w.thoughts = w.thoughts.filter(x => x.id !== d.id); await saveWork(w); toast('已刪除。'); render(); },
+  makeLookFor: async () => {
+    const w = workOf(S.route.p.id); if (!w || S.ui.busy.look) return; S.ui.busy.look = true; render();
+    try { const r = await AI.lookFor(S.settings, { title: w.title, titleOriginal: w.titleOriginal, artist: w.artist, artistOriginal: w.artistOriginal, year: w.year, medium: w.medium, isStreet: w.kind === 'street', short: w.short }); w.lookFor = (r && r.lookFor) || []; await saveWork(w); }
+    catch (e) { toast(e.message); }
+    delete S.ui.busy.look; bgRender();
   },
   write: () => { S.ui.writing = !S.ui.writing; render(); if (S.ui.writing) setTimeout(() => $('#noteIn') && $('#noteIn').focus(), 50); },
   saveNote: async () => { const w = workOf(S.route.p.id); const t = $('#noteIn').value.trim(); if (t) { w.thoughts = [{ id: uid(), at: Date.now(), kind: 'text', text: t }, ...(w.thoughts || [])]; await saveWork(w); toast('感想已存下來。'); } S.ui.writing = false; render(); },

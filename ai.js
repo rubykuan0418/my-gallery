@@ -155,12 +155,24 @@ ${list}
  "isCopy": 只有當它是複製品、印刷品、老照片時填 true（藝術家親手做的仿古作品不算）,
  "short": ${len}的解說，說這件作品在畫什麼、為什麼值得看。街頭的東西就描述它的風格、材質和可能的年代,
  "long": 4 到 6 句、更完整的解說,
+ "lookFor": 站在作品前「可以留心觀賞的重點」，${settings.length === 'deep' ? '3 到 4' : '2 到 3'} 點，每點是 {"aspect": 從 ["用色","線條","構圖","光線","筆觸","細節","材質","象徵","歷史背景","畫家心境"] 選一個, "text": 一到兩句具體的觀看提示，告訴她眼睛要看哪裡、會發現什麼}。要具體到這件作品（例如「看維納斯腳下的貝殼邊緣…」），不要空泛。街頭物件就提示它的材質、做工或所在環境,
  "labelText": 如果是說明牌，用繁體中文摘要上面的重點，否則 null,
  "dims": {"brightness":1到5(1很明亮,5很沉穩),"warmth":1到5(1很冷,5很暖),"line":1到5(1流動有機,5幾何結構),"form":1到5(1寫實,5抽象平面),"mood":1到5(1寧靜,5熱烈),"ornament":1到5(1簡約,5繁複)},
  "subjects": 從 ["人物","自然","神話與宗教","日常生活","城市","建築","裝飾與工藝","動物"] 選 1 到 3 個
 }
 規則：說明牌上的文字比畫面猜測更可信；如果是說明牌，title 等欄位依說明牌填寫。認不出時 confidence 用 low，不要硬猜名作。`;
     return call(settings, { system: SYS, text, imageB64 });
+  }
+
+  function lookFor(settings, { title, titleOriginal, artist, artistOriginal, year, medium, isStreet, short }) {
+    const n = settings.length === 'deep' ? '3 到 4' : '2 到 3';
+    const text = `作品：${title}${titleOriginal ? '（' + titleOriginal + '）' : ''}
+藝術家：${artist || '不明'}${artistOriginal ? '（' + artistOriginal + '）' : ''}　年代：${year || '不明'}　媒材：${medium || '不明'}
+${short ? '簡介：' + short : ''}
+請寫出站在${isStreet ? '它' : '這件作品'}前「可以留心觀賞的重點」，${n} 點。
+回傳 JSON：{"lookFor":[{"aspect": 從 ["用色","線條","構圖","光線","筆觸","細節","材質","象徵","歷史背景","畫家心境"] 選一個, "text": 一到兩句具體的觀看提示，告訴她眼睛要看哪裡、會發現什麼}]}
+要具體到這件作品，不要空泛；不確定的事情不要編造。`;
+    return call(settings, { system: SYS, text, maxTokens: 700 });
   }
 
   function transcribe(settings, { audioB64, audioMime, workTitle }) {
@@ -196,5 +208,5 @@ ${prevNames && prevNames.length ? '請不要再用這些名稱：' + prevNames.j
     return !!r;
   }
 
-  return { PROVIDERS, state, analyzePhoto, transcribe, artistDna, aestheticDna, testKey };
+  return { PROVIDERS, state, lookFor, analyzePhoto, transcribe, artistDna, aestheticDna, testKey };
 })();
