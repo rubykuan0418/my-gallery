@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的美術館</title>
+<meta name="description" content="把每次看展、路上遇見的美，自動整理成自己的畫廊。">
+<meta name="theme-color" content="#FBF7EF">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="我的美術館">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Noto+Serif+TC:wght@600;700&family=Noto+Sans+TC:wght@400;500;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" aria-live="polite"><p style="padding:40px 24px">載入中…</p></div>
+<input id="camInput" type="file" accept="image/*" capture="environment" class="visually-hidden" aria-label="拍照">
+<input id="libInput" type="file" accept="image/*" multiple class="visually-hidden" aria-label="從相簿選照片">
+<input id="addInput" type="file" accept="image/*" multiple class="visually-hidden" aria-label="補照片">
+<input id="avatarInput" type="file" accept="image/*" class="visually-hidden" aria-label="上傳大頭照">
+<input id="importInput" type="file" accept="application/json,.json" class="visually-hidden" aria-label="匯入備份">
+<script src="db.js"></script>
+<script src="ai.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
