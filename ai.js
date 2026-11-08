@@ -2,10 +2,12 @@
 /* AI：每個人用自己的金鑰，直接從手機呼叫，金鑰只存在這支手機裡。 */
 const AI = (() => {
   const PROVIDERS = {
-    gemini: { name: 'Gemini', model: 'gemini-flash-latest', keyHint: 'AIza 開頭', audio: true },
+    gemini: { name: 'Gemini', model: 'gemini-flash-latest', keyHint: 'AQ. 或 AIza 開頭', audio: true },
     claude: { name: 'Claude', model: 'claude-sonnet-4-5', keyHint: 'sk-ant- 開頭', audio: false },
     openai: { name: 'ChatGPT', model: 'gpt-4o-mini', keyHint: 'sk- 開頭', audio: false }
   };
+
+  const GEMINI_FALLBACK = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
 
   function parseJSON(text) {
     if (!text) throw new Error('AI 沒有回覆內容');
@@ -19,11 +21,21 @@ const AI = (() => {
   function friendlyError(status, body) {
     const msg = (body && (body.error && (body.error.message || body.error.type))) || '';
     if (status === 400 && /API key|api_key|API_KEY/i.test(msg)) return '金鑰好像不正確，請到設定重新貼一次。';
+    if (/ACCESS_TOKEN_TYPE_UNSUPPORTED/i.test(JSON.stringify(body || {}))) return 'Google 暫時不接受這種新格式的金鑰。請到 AI Studio 再建立一把新的金鑰試試看。';
     if (status === 401 || status === 403) return '金鑰無法使用（可能貼錯，或還沒開通）。請到設定檢查。';
     if (status === 404) return '找不到這個 AI 模型，可以到設定的「進階」換一個模型名稱。';
     if (status === 429) return 'AI 使用次數暫時用完了（免費額度有上限），稍後會再自動試一次。';
     if (status >= 500) return 'AI 服務暫時忙碌，稍後會再自動試一次。';
     return 'AI 暫時無法回覆' + (msg ? '：' + msg : '');
+  }
+  function withCode(status, body) {
+    const msg = (body && body.error && (body.error.status || body.error.message)) || '';
+    return friendlyError(status, body) + `（代碼 ${status}${msg ? '・' + String(msg).slice(0, 80) : ''}）`;
+  }
+
+  async function netFetch(url, opts) {
+    try { return await fetch(url, opts); }
+    catch (e) { const err = new Error('連不上 AI 服務（Load failed）。請確認網路正常；如果一直出現，可以到設定改用其他 AI。'); err.code = 'network'; throw err; }
   }
 
   async function call(settings, { system, text, imageB64, audioB64, audioMime, json = true, maxTokens = 1800 }) {
@@ -38,12 +50,21 @@ const AI = (() => {
       if (imageB64) parts.push({ inline_data: { mime_type: 'image/jpeg', data: imageB64 } });
       if (audioB64) parts.push({ inline_data: { mime_type: audioMime || 'audio/mp4', data: audioB64 } });
       parts.push({ text });
-      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.4, maxOutputTokens: Math.max(maxTokens * 3, 4096), ...(json ? { responseMimeType: 'application/json' } : {}) } })
-      });
-      body = await res.json().catch(() => ({}));
-      if (!res.ok) { const e = new Error(friendlyError(res.status, body)); e.status = res.status; throw e; }
+      const payload = JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.4, maxOutputTokens: Math.max(maxTokens * 3, 4096), ...(json ? { responseMimeType: 'application/json' } : {}) } });
+      // 模型忙碌（503/500/429）時，稍等再試，並自動換備用模型
+      const models = [...new Set([model, ...GEMINI_FALLBACK])];
+      for (let i = 0; i < models.length; i++) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models[i])}:generateContent`;
+        // 先用「簡單請求」（不帶自訂標頭，Safari 比較不會擋），失敗再改用標頭帶金鑰
+        try { res = await fetch(url + '?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: payload }); }
+        catch (e1) { res = await netFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: payload }); }
+        body = await res.json().catch(() => ({}));
+        if (res.ok) break;
+        const busy = res.status >= 500 || res.status === 429 || res.status === 404;
+        if (!busy || i === models.length - 1) break;
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      if (!res.ok) { const e = new Error(withCode(res.status, body)); e.status = res.status; throw e; }
       const out = (((body.candidates || [])[0] || {}).content || {}).parts || [];
       const t = out.map(x => x.text || '').join('');
       return json ? parseJSON(t) : t;
@@ -52,25 +73,25 @@ const AI = (() => {
       const content = [];
       if (imageB64) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageB64 } });
       content.push({ type: 'text', text: text + (json ? '\n\n只回傳 JSON，不要其他文字。' : '') });
-      res = await fetch('https://api.anthropic.com/v1/messages', {
+      res = await netFetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
         body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] })
       });
       body = await res.json().catch(() => ({}));
-      if (!res.ok) { const e = new Error(friendlyError(res.status, body)); e.status = res.status; throw e; }
+      if (!res.ok) { const e = new Error(withCode(res.status, body)); e.status = res.status; throw e; }
       const t = (body.content || []).map(x => x.text || '').join('');
       return json ? parseJSON(t) : t;
     }
     // openai
     const content = [{ type: 'text', text }];
     if (imageB64) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imageB64 } });
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
+    res = await netFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content }], ...(json ? { response_format: { type: 'json_object' } } : {}) })
     });
     body = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(friendlyError(res.status, body)); e.status = res.status; throw e; }
+    if (!res.ok) { const e = new Error(withCode(res.status, body)); e.status = res.status; throw e; }
     const t = ((body.choices || [])[0] || {}).message?.content || '';
     return json ? parseJSON(t) : t;
   }

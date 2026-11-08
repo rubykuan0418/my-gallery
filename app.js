@@ -352,7 +352,7 @@ function dimWord(k, v) { const d = DIMS.find(x => x[0] === k); if (!d || v == nu
 
 function keyGuide(p) {
   const G = {
-    gemini: { url: 'https://aistudio.google.com/apikey', site: 'Google AI Studio', steps: ['用你的 Google 帳號登入（第一次使用要同意服務條款）', '按「Create API key」（建立 API 金鑰）', '複製以「AIza」開頭的那串文字，回來貼在下面'], note: '不用綁信用卡也能先用，每天有免費次數。依 Google 規定，免費額度的資料可能被用來改善他們的服務；在意的話可以在 AI Studio 開啟付費。注意：Gemini app 的訂閱和 API 是分開的。' },
+    gemini: { url: 'https://aistudio.google.com/apikey', site: 'Google AI Studio', steps: ['用你的 Google 帳號登入（第一次使用要同意服務條款）', '按「Create API key」（建立 API 金鑰）', '複製那串金鑰（通常是「AQ.」開頭，舊的是「AIza」開頭），回來貼在下面'], note: '不用綁信用卡也能先用，每天有免費次數。依 Google 規定，免費額度的資料可能被用來改善他們的服務；在意的話可以在 AI Studio 開啟付費。注意：Gemini app 的訂閱和 API 是分開的。' },
     claude: { url: 'https://console.anthropic.com/settings/keys', site: 'Claude Console', steps: ['登入或註冊，先在 Billing 儲值一點額度（和 Claude 訂閱分開計費）', '按「Create Key」', '複製以「sk-ant-」開頭的金鑰，回來貼在下面'], note: 'Claude 目前無法把語音感想轉成文字，錄音會保留聲音。' },
     openai: { url: 'https://platform.openai.com/api-keys', site: 'OpenAI Platform', steps: ['登入，先在 Billing 設定付款（和 ChatGPT 訂閱分開計費）', '按「Create new secret key」', '複製以「sk-」開頭的金鑰，回來貼在下面'], note: 'ChatGPT 的 API 在這裡無法把語音感想轉成文字，錄音會保留聲音。' }
   }[p];

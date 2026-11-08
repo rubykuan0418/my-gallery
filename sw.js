@@ -1,5 +1,5 @@
 // 我的美術館 service worker：讓 app 在沒有網路時也能打開
-const VERSION = 'mg-v1';
+const VERSION = 'mg-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'db.js', 'ai.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
