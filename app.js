@@ -26,6 +26,8 @@ const I = {
   sort: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h6M17 14l3 3-3 3"/></svg>',
   dl: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   refresh: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M20 4v5h-5M4 20v-5h5"/></svg>',
+  zoom: '<svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20M10.5 7.5v6M7.5 10.5h6"/></svg>',
+  trash: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
   x: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   star: (c = '#EBD49A', s = 26) => `<svg width="${s}" height="${s}" viewBox="0 0 80 80" aria-hidden="true"><path d="M40 2l9 26 28-3-22 17 12 27-26-15-21 20 5-28L2 34l29-6z" fill="${c}"/></svg>`,
   leaf: (c = '#EBCDC2', w = 90) => `<svg width="${w}" height="${w * 1.45}" viewBox="0 0 100 150" aria-hidden="true"><path d="M50 2c8 10-4 16 6 24 12-6 18 4 10 10-8 4-14 2-14 10 10-2 18 8 8 14-8 4-12-2-16 6 8 2 12 12 2 14-6 0-8-6-12-2 2 10-4 18-10 18-4-10 2-16-6-22-8 4-16-4-8-10 6-4 10 0 12-8-8 0-14-8-6-14 6-4 10 2 12-6-6-4-6-14 2-14 4 0 6 4 8 0-2-8 4-14 12-20z" fill="${c}"/></svg>`,
@@ -46,6 +48,7 @@ const S = {
 const URLS = new Map();
 function purl(p, kind = 'thumb') {
   if (!p) return '';
+  if (p.broken) return BROKEN_IMG;
   const k = p.id + kind;
   if (!URLS.has(k)) { const b = kind === 'thumb' ? (p.thumb || p.blob) : (p.blob || p.thumb); if (!b) return ''; URLS.set(k, URL.createObjectURL(b)); }
   return URLS.get(k);
@@ -53,18 +56,35 @@ function purl(p, kind = 'thumb') {
 
 /* ---------- 資料存取 ---------- */
 const saveSettings = () => DB.setKV('settings', S.settings);
-const savePhoto = p => DB.put('photos', p);
-const saveWork = w => DB.put('works', w);
+async function toBuf(b) { return b ? await b.arrayBuffer() : null; }
+async function savePhoto(p) {
+  if (p.broken) return DB.put('photos', { ...p, blob: null, thumb: null });
+  const { blob, thumb, ...rest } = p;
+  return DB.put('photos', { ...rest, blobBuf: await toBuf(blob), thumbBuf: await toBuf(thumb), v: 2 });
+}
+async function saveWork(w) {
+  const thoughts = await Promise.all((w.thoughts || []).map(async t => {
+    if (!(t.audio instanceof Blob)) return t;
+    try { const { audio, ...r } = t; return { ...r, audioBuf: await audio.arrayBuffer(), audioType: audio.type }; } catch (e) { const { audio, ...r } = t; return r; }
+  }));
+  return DB.put('works', { ...w, thoughts });
+}
+function revivePhoto(r) {
+  if (r.v === 2) { const { blobBuf, thumbBuf, ...p } = r; return { ...p, blob: blobBuf ? new Blob([blobBuf], { type: 'image/jpeg' }) : null, thumb: thumbBuf ? new Blob([thumbBuf], { type: 'image/jpeg' }) : null }; }
+  return r;
+}
+function reviveWork(w) { return { ...w, thoughts: (w.thoughts || []).map(t => t.audioBuf ? (({ audioBuf, ...r }) => ({ ...r, audio: new Blob([audioBuf], { type: t.audioType || 'audio/mp4' }) }))(t) : t) }; }
+const BROKEN_IMG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#EFE8DC"/><text x="100" y="96" font-size="20" text-anchor="middle" fill="#6B5D55" font-family="sans-serif">照片檔案遺失</text><text x="100" y="124" font-size="15" text-anchor="middle" fill="#6B5D55" font-family="sans-serif">可從相簿重新補上</text></svg>');
 const savePlace = p => DB.put('places', p);
 function photosOf(workId) { return S.photos.filter(p => p.workId === workId).sort((a, b) => a.takenAt - b.takenAt); }
-function mainPhoto(w) { const ps = photosOf(w.id); return ps.find(p => p.type === '作品') || ps.find(p => p.type === '我與作品') || ps.find(p => p.type === '細節') || ps[0]; }
+function mainPhoto(w) { const all = photosOf(w.id); const ps = all.filter(p => !p.broken).length ? all.filter(p => !p.broken) : all; return ps.find(p => p.type === '作品') || ps.find(p => p.type === '我與作品') || ps.find(p => p.type === '細節') || ps[0]; }
 const placeOf = id => S.places.find(p => p.id === id);
 const workOf = id => S.works.find(w => w.id === id);
 const worksAt = placeId => S.works.filter(w => w.placeId === placeId);
 function lastAt(w) { const ps = photosOf(w.id); return ps.length ? ps[ps.length - 1].takenAt : (w.createdAt || 0); }
 function seenDates(w) { return [...new Set(photosOf(w.id).map(p => ymd(p.takenAt)))].sort(); }
 function placeLast(pl) { let m = pl.createdAt || 0; worksAt(pl.id).forEach(w => { m = Math.max(m, lastAt(w)); }); return m; }
-function placeCover(pl) { const c = pl.coverPhotoId && S.photos.find(p => p.id === pl.coverPhotoId); if (c) return c; const ws = worksAt(pl.id).sort((a, b) => lastAt(b) - lastAt(a)); for (const w of ws) { const m = mainPhoto(w); if (m) return m; } return null; }
+function placeCover(pl) { const c = pl.coverPhotoId && S.photos.find(p => p.id === pl.coverPhotoId && !p.broken); if (c) return c; const ws = worksAt(pl.id).sort((a, b) => lastAt(b) - lastAt(a)); for (const w of ws) { const m = mainPhoto(w); if (m) return m; } return null; }
 function visitsOf(placeId) {
   const map = new Map();
   S.photos.forEach(p => {
@@ -89,6 +109,14 @@ function go(name, p = {}) { S.stack.push(S.route); S.route = { name, p }; resetU
 function tab(name) { S.stack = []; S.route = { name, p: {} }; resetUi(); render(); scrollTo(0, 0); }
 function back() { S.route = S.stack.pop() || { name: 'home', p: {} }; resetUi(); render(); scrollTo(0, 0); }
 function resetUi() { Object.assign(S.ui, { sheet: null, showLong: false, editInfo: false, writing: false, photoIdx: 0, editName: false, pick: false, renamePlace: false }); }
+function ask(msg, okText = '確定', danger = true) {
+  return new Promise(res => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<div class="scrim" style="z-index:60"></div><div class="dialog" role="alertdialog" aria-modal="true"><p style="margin:0 0 16px;line-height:1.7">${esc(msg)}</p><div class="row"><button class="btn grow" data-r="0">取消</button><button class="btn solid grow" data-r="1" style="${danger ? 'background:var(--accent)' : ''}">${esc(okText)}</button></div></div>`;
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (!b && !e.target.classList.contains('scrim')) return; e.stopPropagation(); wrap.remove(); res(!!(b && b.dataset.r === '1')); });
+  });
+}
 let toastTimer;
 function toast(msg, ms = 3200) { S.toast = msg; renderToast(); clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = ''; renderToast(); }, ms); }
 function renderToast() { let el = $('#toast'); if (!S.toast) { if (el) el.remove(); return; } if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status'); el.onclick = () => { S.toast = ''; renderToast(); }; document.body.appendChild(el); } el.textContent = S.toast; }
@@ -124,6 +152,8 @@ function viewHome() {
   h += `${I.flourish}<p class="muted small" style="margin:0">${n} 件作品・${np} 個地點</p></div>
   <button class="hit" data-act="go" data-to="dna" aria-label="我的美感 DNA" style="width:auto;display:flex;flex-direction:column;align-items:center;gap:2px">${avatarHtml(54)}<span class="tiny" style="color:var(--primary);font-weight:700">我的美感</span></button></div>`;
   if (todayVisit) h += `<button class="hit row" data-act="openCamera" style="margin-top:18px;background:var(--sage);border-radius:26px 14px 30px 12px;padding:14px 16px;gap:12px">${I.star('#4F6652', 22)}<span class="grow" style="line-height:1.5"><strong>今天在${esc(todayVisit.name)}</strong><br><span class="muted small">回到相機，繼續記錄</span></span>${I.next}</button>`;
+  const nBroken = S.photos.filter(p => p.broken).length;
+  if (nBroken) h += `<div class="card" style="margin-top:12px;background:var(--pink)"><p class="small" style="margin:0 0 10px;line-height:1.6"><strong>有 ${nBroken} 張照片的檔案遺失了</strong><br>這是舊版在 iPhone 上存檔的問題，新版已經修好。手機相簿裡的原圖都還在，可以重新匯入。</p><button class="btn white" data-act="cleanBroken">清除遺失的照片</button></div>`;
   if (QRUN || S.queue.length) h += `<div class="card row" role="status" style="margin-top:12px;background:var(--sky)"><span class="spin" style="flex:none"></span><span class="grow small" style="line-height:1.5"><strong>正在辨識照片・還有 ${pending + S.queue.length} 張</strong><br>可以先去看別的；關掉 app 也不會遺失，下次打開會接著辨識。</span></div>`;
   else if (pending) { const ew = S.works.find(w => w.status === 'pending' && w.error); h += `<div class="card row" style="margin-top:12px;background:var(--butter)"><span class="grow small" style="line-height:1.5">有 ${pending} 張照片還沒辨識，照片都已經存好了。${ew ? '<br><span class="muted">' + esc(ew.error) + '</span>' : ''}</span><button class="btn white" data-act="retryAll">${S.ui.busy.retry ? '<span class="spin"></span>' : '再試一次'}</button></div>`; }
   if (!n && !np) {
@@ -167,7 +197,7 @@ function viewPlace() {
   const pl = placeOf(S.route.p.id); if (!pl) return viewHome();
   const c = placeCover(pl), vs = visitsOf(pl.id), ws = worksAt(pl.id);
   const nPhotos = S.photos.filter(p => (p.workId && ws.some(w => w.id === p.workId)) || p.placeId === pl.id).length;
-  let h = `<main class="screen"><button class="back" data-act="back">${I.back}我的畫廊</button>
+  let h = `<main class="screen"><div class="topbar"><button class="back" data-act="back">${I.back}我的畫廊</button></div>
   <div class="row" style="gap:18px;align-items:flex-end;margin-top:10px"><div class="grow"><span class="chip" style="background:${pl.kind === 'walk' ? 'var(--sage)' : 'var(--sky)'}">${pl.kind === 'walk' ? '城市散步' : '美術館'}</span>`;
   if (S.ui.renamePlace) h += `<label class="lab" for="plName" style="margin-top:8px">地點名稱</label><input id="plName" class="field" value="${esc(pl.name)}"><div class="row" style="margin-top:8px"><button class="btn" data-act="renamePlace">取消</button><button class="btn solid" data-act="savePlaceName" data-id="${pl.id}">存下來</button></div>`;
   else h += `<h1 class="serif" style="margin:4px 0 0;font-size:30px;line-height:1.25">${esc(pl.name)}</h1>${pl.nameOriginal ? `<p class="serif muted" style="margin:0;font-size:18px">${esc(pl.nameOriginal)}</p>` : ''}<p class="muted small" style="margin:2px 0 0">${esc(pl.city || '')}</p><button class="linkbtn" data-act="renamePlace">名稱不對？修改</button>`;
@@ -187,12 +217,13 @@ function viewWork() {
   const ps = photosOf(w.id); const idx = Math.min(S.ui.photoIdx, Math.max(0, ps.length - 1)); const p = ps[idx];
   const pl = placeOf(w.placeId); const dates = seenDates(w);
   const prov = AI.PROVIDERS[w.aiProvider || S.settings.provider] || AI.PROVIDERS.gemini;
-  let h = `<main class="screen"><div class="row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}${esc(pl ? pl.name : '返回')}</button>
+  let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}${esc(pl ? pl.name : '返回')}</button>
   <button class="ibtn heart ${w.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!w.fav}" aria-label="${w.fav ? '已加入最喜歡，點一下取消' : '加入最喜歡'}" style="${w.fav ? 'background:var(--pink)' : ''}">${I.heart}</button></div>
-  <div style="position:relative;margin-top:8px"><div class="frame" style="padding:8px">${p ? `<img src="${purl(p, 'full')}" alt="${esc(w.title)}，${esc(p.type)}" style="height:min(60vh,430px);object-fit:contain;background:#EFE8DC">` : ''}</div>
+  <div style="position:relative;margin-top:8px"><div class="frame" style="padding:8px">${p ? `<button class="hit" data-act="zoom" aria-label="放大看照片" style="display:block;width:100%"><img src="${purl(p, 'full')}" alt="${esc(w.title)}，${esc(p.type)}" style="${p.w && p.h ? `aspect-ratio:${p.w}/${p.h};` : ''}width:100%;height:auto;max-height:68vh;object-fit:contain;background:#EFE8DC"></button>` : ''}</div>
+  ${p ? `<button class="ibtn" data-act="zoom" aria-label="放大看照片" style="position:absolute;right:16px;bottom:16px;background:rgba(255,253,248,.95)">${I.zoom}</button>` : ''}
   ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(p.type)}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
   <div class="row" style="margin-top:10px;overflow-x:auto;padding-bottom:2px">${ps.map((x, i) => `<button class="hit" style="width:auto;flex:none" data-act="photoIdx" data-i="${i}" aria-label="看第 ${i + 1} 張：${esc(x.type)}"><img src="${purl(x)}" alt="" style="width:50px;height:50px;object-fit:cover;display:block;border:3px solid ${i === idx ? 'var(--accent)' : 'var(--card)'};border-radius:12px 8px 14px 6px"></button>`).join('')}</div>
-  <button class="btn white" data-act="sheet" data-v="menu" style="margin-top:8px;font-size:14px">${I.sort}這張放錯了？整理這張照片</button>`;
+  <div class="row wrap" style="margin-top:8px"><button class="btn white" data-act="sheet" data-v="menu" style="font-size:14px">${I.sort}整理這張照片</button><button class="btn white" data-act="removePhoto" style="font-size:14px">${I.trash}刪除這張</button></div>`;
   if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
   h += `<div style="margin-top:20px">${w.isCopy ? '<span class="chip">複製品・不算進美感 DNA</span> ' : ''}${w.kind === 'street' ? '<span class="chip" style="background:var(--sage)">路上的小美好</span>' : ''}`;
   if (S.ui.editInfo) {
@@ -238,7 +269,7 @@ function sheetHtml(w, p, ps) {
   let h = `<button class="scrim" data-act="sheet" data-v="" aria-label="關閉"></button><div class="sheet" role="dialog" aria-label="整理這張照片">
   <div class="row" style="margin-bottom:14px">${p ? `<img src="${purl(p)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:14px 8px 16px 6px">` : ''}<div style="line-height:1.5"><strong>整理這張照片</strong><br><span class="muted small">目前在《${esc(w.title)}》・${esc(p ? p.type : '')}</span></div></div>`;
   if (S.ui.sheet === 'menu') {
-    h += `<div style="display:flex;flex-direction:column;gap:8px">${[['sheet', 'move', '移到另一件作品'], ['sheet', 'type', '改照片類型（作品、細節、說明牌⋯）'], ['split', '', '獨立成新的一件作品'], ['makeCover', '', '設成這個地點的封面'], ['removePhoto', '', '刪除這張照片']].map(([a, v, l]) => `<button class="btn" data-act="${a}" data-v="${v}" style="justify-content:flex-start">${l}</button>`).join('')}<button class="btn ghost" data-act="sheet" data-v="">取消</button></div>`;
+    h += `<div style="display:flex;flex-direction:column;gap:8px">${[['sheet', 'move', '移到另一件作品（拍到別的作品了）'], ['sheet', 'type', '改照片類型（作品、細節、說明牌⋯）'], ['split', '', '獨立成新的一件作品'], ['makeCover', '', '設成這個地點的封面'], ['removePhoto', '', '刪除這張照片']].map(([a, v, l]) => `<button class="btn" data-act="${a}" data-v="${v}" style="justify-content:flex-start">${l}</button>`).join('')}<button class="btn ghost" data-act="sheet" data-v="">取消</button></div>`;
   } else if (S.ui.sheet === 'type') {
     h += `<p style="margin:0 0 8px">這張照片是：</p><div class="row wrap">${TYPES.map(t => `<button class="opt ${p && p.type === t ? 'on' : ''}" data-act="setType" data-v="${t}">${t}</button>`).join('')}</div><button class="btn ghost block" data-act="sheet" data-v="menu" style="margin-top:14px">返回</button>`;
   } else if (S.ui.sheet === 'move') {
@@ -325,7 +356,7 @@ async function initMap() {
 function viewDna() {
   const el = eligible(); const n = el.length; const D = S.dna;
   const meShots = S.photos.filter(p => p.type === '我與作品').slice(-6);
-  let h = `<main class="screen"><div class="row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}我的畫廊</button><button class="ibtn" data-act="go" data-to="settings" aria-label="設定">${I.set}</button></div>
+  let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}我的畫廊</button><button class="ibtn" data-act="go" data-to="settings" aria-label="設定">${I.set}</button></div>
   <div class="row" style="gap:16px;margin-top:6px">${avatarHtml(96)}<div class="grow"><p class="serif" style="margin:0;font-size:24px;line-height:1.3">${esc(S.settings.name || '我')}</p><p class="muted small" style="margin:0">${S.works.length} 件作品・${S.places.length} 個地點</p>
   <div class="row wrap" style="margin-top:8px"><button class="btn" data-act="pickAvatar" style="min-height:44px;font-size:14px">上傳照片</button>${meShots.length ? `<button class="btn" data-act="togglePick" style="min-height:44px;font-size:14px">從收藏挑</button>` : ''}</div></div></div>`;
   if (S.ui.pick) h += `<div class="card" style="margin-top:12px"><p style="margin:0 0 8px">選一張「我與作品」當大頭照</p><div class="row wrap">${meShots.map(p => `<button class="hit" style="width:auto" data-act="avatarFrom" data-id="${p.id}"><img class="avatar" src="${purl(p)}" alt="" style="width:72px;height:72px"></button>`).join('')}</div><p class="muted tiny" style="margin:8px 0 0">照片只存在你的手機裡。</p></div>`;
@@ -372,7 +403,7 @@ function aiSetupHtml(context) {
 
 function viewSettings() {
   const p = S.settings.provider;
-  return `<main class="screen"><button class="back" data-act="back">${I.back}返回</button><h1 class="serif" style="margin:6px 0 18px;font-size:32px">設定</h1>
+  return `<main class="screen"><div class="topbar"><button class="back" data-act="back">${I.back}返回</button></div><h1 class="serif" style="margin:6px 0 18px;font-size:32px">設定</h1>
   <p class="sec">解說用的 AI</p>${aiSetupHtml('settings')}
   <div class="card" style="margin-top:14px;background:var(--sage)"><strong>自動備援</strong><p class="small" style="margin:4px 0 8px">兩把以上的金鑰都設定好，主要的 AI 忙碌、太慢或連不上時，會自動改用另一個，不用自己切換。</p>
   <div class="row wrap">${Object.entries(AI.PROVIDERS).map(([k, v]) => `<span class="chip" style="background:var(--card)">${v.name}：${(S.settings.keys || {})[k] ? (k === S.settings.provider ? '主要' : '備用') : '未設定'}</span>`).join('')}</div>
@@ -399,6 +430,11 @@ function viewOnboarding() {
   return h + `</main>`;
 }
 
+/* 正在輸入文字時，背景工作（辨識、轉文字）先不重畫畫面，免得鍵盤被收掉、字不見 */
+let RENDER_WAIT = false;
+const typing = () => { const a = document.activeElement; return !!(a && a.closest && a.closest('#app') && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type !== 'file'))); };
+function bgRender() { if (typing()) { RENDER_WAIT = true; return; } render(); }
+document.addEventListener('focusout', () => { setTimeout(() => { if (RENDER_WAIT && !typing()) { RENDER_WAIT = false; render(); } }, 400); });
 const VIEWS = { home: viewHome, place: viewPlace, work: viewWork, camera: viewCamera, summary: viewSummary, map: viewMap, dna: viewDna, settings: viewSettings };
 function render() {
   const app = $('#app');
@@ -448,8 +484,28 @@ async function walkPlace(city, loc) {
   const f = S.places.find(p => p.kind === 'walk' && norm(p.city || '') === norm(city || '') && (city || (dist(loc, p) != null && dist(loc, p) < 3)));
   return f || newPlace({ kind: 'walk', name, city: city || '', lat: loc ? loc.lat : null, lng: loc ? loc.lng : null });
 }
+async function mergeDuplicatePlaces() {
+  const groups = new Map();
+  for (const p of S.places) { const k = norm(p.name); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); }
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => (b.kind === 'museum') - (a.kind === 'museum') || worksAt(b.id).length - worksAt(a.id).length);
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      for (const w of S.works.filter(w => w.placeId === dup.id)) { w.placeId = keep.id; await saveWork(w); }
+      for (const ph of S.photos.filter(ph => ph.placeId === dup.id)) { ph.placeId = keep.id; await savePhoto(ph); }
+      if (!keep.coverPhotoId && dup.coverPhotoId) keep.coverPhotoId = dup.coverPhotoId;
+      if (keep.lat == null && dup.lat != null) { keep.lat = dup.lat; keep.lng = dup.lng; }
+      if (!keep.nameOriginal && dup.nameOriginal) keep.nameOriginal = dup.nameOriginal;
+      if (S.session && S.session.placeId === dup.id) S.session.placeId = keep.id;
+      S.places = S.places.filter(p => p.id !== dup.id); await DB.del('places', dup.id);
+    }
+    if (keep.kind !== 'museum' && list.some(p => p.kind === 'museum')) keep.kind = 'museum';
+    await savePlace(keep);
+  }
+}
 async function museumPlace(r, loc, city) {
-  const f = S.places.find(p => p.kind === 'museum' && (norm(p.name) === norm(r.museum) || (r.museumOriginal && norm(p.nameOriginal) === norm(r.museumOriginal)) || (dist(loc, p) != null && dist(loc, p) < 0.3)));
+  const f = S.places.find(p => (norm(p.name) === norm(r.museum) || (r.museumOriginal && norm(p.nameOriginal) === norm(r.museumOriginal)) || (dist(loc, p) != null && dist(loc, p) < 0.3)));
   return f || newPlace({ kind: 'museum', name: r.museum, nameOriginal: r.museumOriginal || '', city: r.city || city || '', lat: loc ? loc.lat : null, lng: loc ? loc.lng : null });
 }
 function applyAI(w, r, opts = {}) {
@@ -466,7 +522,7 @@ function candidatesFor(placeId) { return placeId ? worksAt(placeId).filter(w => 
 
 /* 照片先存起來（很快），辨識交給背景佇列：離開相機、關掉 app 都不會遺失 */
 async function processFile(file, fromCamera) {
-  const q = { id: uid(), status: 'prep', thumb: null }; S.queue.push(q); render();
+  const q = { id: uid(), status: 'prep', thumb: null }; S.queue.push(q); bgRender();
   try {
     const exif = await readExif(file);
     const prep = await prepareImage(file);
@@ -480,7 +536,7 @@ async function processFile(file, fromCamera) {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   } catch (e) { toast('這張照片打不開：' + e.message); }
   S.queue = S.queue.filter(x => x !== q);
-  render();
+  bgRender();
 }
 let QRUN = false, QTIMER = null;
 const queuedWorks = () => S.works.filter(w => w.status === 'pending' && w.queued);
@@ -488,9 +544,9 @@ async function runQueue() {
   if (QRUN) return; QRUN = true; clearTimeout(QTIMER);
   try {
     while (true) {
-      const list = queuedWorks().filter(w => !w.hold).map(w => ({ w, p: photosOf(w.id)[0] })).filter(x => x.p).sort((a, b) => a.p.takenAt - b.p.takenAt);
+      const list = queuedWorks().filter(w => !w.hold).map(w => ({ w, p: photosOf(w.id)[0] })).filter(x => x.p && !x.p.broken).sort((a, b) => a.p.takenAt - b.p.takenAt);
       if (!list.length) break;
-      const { w, p } = list[0]; S.working = w.id; render();
+      const { w, p } = list[0]; S.working = w.id; bgRender();
       const loc = p.lat != null ? { lat: p.lat, lng: p.lng } : null;
       const sess = currentSession(p.takenAt, loc);
       const geo = await reverseCity(loc);
@@ -511,10 +567,13 @@ async function runQueue() {
       S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id);
       S.photos = S.photos.filter(x => x.id !== p.id); p.workId = null;
       await integrate(p, r, { sess, loc, geo, takenAt: p.takenAt });
+      // 等待辨識時留下的感想、愛心，跟著照片搬到正式的作品
+      const nw = p.workId && workOf(p.workId);
+      if (nw && ((w.thoughts || []).length || w.fav)) { nw.thoughts = [...(w.thoughts || []), ...(nw.thoughts || [])]; nw.fav = nw.fav || w.fav; await saveWork(nw); }
       if (!p.fromCamera) S.last = prevLast;
       if (S.route.name === 'work' && S.route.p.id === w.id && p.workId) { S.route = { name: 'work', p: { id: p.workId } }; }
     }
-  } finally { QRUN = false; S.working = null; render(); }
+  } finally { QRUN = false; S.working = null; bgRender(); }
 }
 async function integrate(photo, r, ctx) {
   const { sess, loc, geo, takenAt, err } = ctx;
@@ -533,7 +592,7 @@ async function integrate(photo, r, ctx) {
   }
   photo.type = TYPES.includes(r.photoType) ? r.photoType : '作品';
   if (sessPlace && sessPlace.kind === 'museum' && !(r.isStreet && photo.type !== '館外照')) place = sessPlace;
-  else if (r.museum && !r.isStreet) place = await museumPlace(r, loc, city);
+  else if (r.museum && (!r.isStreet || photo.type === '館外照')) place = await museumPlace(r, loc, city);
   else if (r.isStreet) place = (sessPlace && sessPlace.kind === 'walk') ? sessPlace : await walkPlace(city, loc);
   else place = sessPlace || await walkPlace(city, loc);
   if (place.lat == null && loc) { place.lat = loc.lat; place.lng = loc.lng; await savePlace(place); }
@@ -564,7 +623,7 @@ async function handleFiles(files, fromCamera) {
 }
 async function reanalyze(w, useCandidates = false) {
   const ps = photosOf(w.id); if (!ps.length) return;
-  S.ui.busy[w.id] = true; render();
+  S.ui.busy[w.id] = true; bgRender();
   try {
     const label = ps.find(p => p.type === '說明牌'); const main = mainPhoto(w);
     const pl = placeOf(w.placeId);
@@ -580,16 +639,16 @@ async function reanalyze(w, useCandidates = false) {
     if (pl && pl.kind === 'walk' && r.museum && !r.isStreet) { const mp = await museumPlace(r, { lat: pl.lat, lng: pl.lng }, pl.city); if (mp.id !== pl.id) w.placeId = mp.id; }
     await saveWork(w); toast('整理好了。');
   } catch (e) { w.error = e.message; await saveWork(w); toast(e.message); }
-  delete S.ui.busy[w.id]; render();
+  delete S.ui.busy[w.id]; bgRender();
 }
 async function retryPending() {
   if (S.ui.busy.retry || !navigator.onLine || !(S.settings.keys || {})[S.settings.provider]) return;
   queuedWorks().forEach(w => { w.hold = false; });
   runQueue();
   const old = S.works.filter(w => w.status === 'pending' && !w.queued); if (!old.length) return;
-  S.ui.busy.retry = true; render();
+  S.ui.busy.retry = true; bgRender();
   for (const w of old) await reanalyze(w, true);
-  delete S.ui.busy.retry; render();
+  delete S.ui.busy.retry; bgRender();
 }
 
 /* ---------- 錄音 ---------- */
@@ -610,20 +669,20 @@ function stopRec() { if (S.rec) { S.rec.rec.stop(); } }
 async function finishRec(workId, blob, stream) {
   stream.getTracks().forEach(t => t.stop());
   const dur = Math.round((Date.now() - S.rec.start) / 1000); S.rec = null;
-  const w = workOf(workId); if (!w) return render();
+  const w = workOf(workId); if (!w) return bgRender();
   const t = { id: uid(), at: Date.now(), kind: 'voice', audio: blob, dur, text: canTranscribe() ? '轉成文字中…' : `（語音 ${dur} 秒）` };
-  w.thoughts = [t, ...(w.thoughts || [])]; await saveWork(w); render();
+  w.thoughts = [t, ...(w.thoughts || [])]; await saveWork(w); bgRender();
   if (canTranscribe()) {
     try { const text = await AI.transcribe(S.settings, { audioB64: await blobToBase64(blob), audioMime: blob.type.split(';')[0], workTitle: w.title }); t.text = String(text).trim(); toast(`感想已存到《${w.title}》`); }
     catch (e) { t.text = `（語音 ${dur} 秒，之後可以重新轉文字）`; toast(e.message); }
-    await saveWork(w); render();
+    await saveWork(w); bgRender();
   } else toast(`感想已存到《${w.title}》`);
 }
 
 /* ---------- 美感 DNA ---------- */
 async function makeDna(reword) {
   const el = eligible(); if (el.length < 5) return;
-  S.ui.busy.dna = true; render();
+  S.ui.busy.dna = true; bgRender();
   try {
     const ws = el.map(w => ({ w, wt: workWeight(w) })).sort((a, b) => b.wt - a.wt);
     const tot = ws.reduce((a, x) => a + x.wt, 0);
@@ -636,7 +695,7 @@ async function makeDna(reword) {
     if (!palette.length) palette = await paletteFromBlobs(ws.map(x => { const ps = photosOf(x.w.id); const m = ps.find(p => p.type === '作品') || ps.find(p => p.type === '細節'); return m && m.thumb; }).filter(Boolean));
     S.dna = { basis: el.length, data, palette, avg, subjects, at: Date.now() }; await DB.setKV('dna', S.dna);
   } catch (e) { toast(e.message); }
-  delete S.ui.busy.dna; render();
+  delete S.ui.busy.dna; bgRender();
 }
 async function shareDna() {
   const d = S.dna && S.dna.data; if (!d) return;
@@ -660,12 +719,12 @@ async function exportData() {
   S.ui.busy.export = true; render();
   try {
     const photos = [];
-    for (const p of S.photos) photos.push({ ...p, blob: await blobToBase64(p.blob), thumb: await blobToBase64(p.thumb) });
+    for (const p of S.photos) { if (p.broken) continue; photos.push({ ...p, blob: await blobToBase64(p.blob), thumb: await blobToBase64(p.thumb) }); }
     const works = [];
     for (const w of S.works) works.push({ ...w, thoughts: await Promise.all((w.thoughts || []).map(async t => t.audio ? { ...t, audio: await blobToBase64(t.audio), audioType: t.audio.type } : t)) });
     const settings = { ...S.settings, keys: {} };
     const avatar = await DB.getKV('avatar', null);
-    const data = { app: 'my-gallery', version: 1, exportedAt: Date.now(), settings, places: S.places, works, photos, dna: S.dna, artist: S.artist, avatar: avatar ? await blobToBase64(avatar) : null };
+    const data = { app: 'my-gallery', version: 1, exportedAt: Date.now(), settings, places: S.places, works, photos, dna: S.dna, artist: S.artist, avatar: avatar ? await blobToBase64(avatar instanceof ArrayBuffer ? new Blob([avatar]) : avatar) : null };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const name = `my-gallery-backup-${ymd(Date.now())}.json`; const file = new File([blob], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: '我的美術館備份' }); } catch (e) { if (e.name !== 'AbortError') downloadBlob(blob, name); } }
@@ -678,20 +737,52 @@ async function importData(file) {
   try {
     const data = JSON.parse(await file.text());
     if (data.app !== 'my-gallery') throw new Error('這不是我的美術館的備份檔');
-    if (!confirm(`要匯入 ${data.works.length} 件作品、${data.photos.length} 張照片嗎？相同的資料會被覆蓋，其他資料會保留。`)) return;
+    if (!await ask(`要匯入 ${data.works.length} 件作品、${data.photos.length} 張照片嗎？相同的資料會被覆蓋，其他資料會保留。`)) return;
     for (const p of data.places) { await savePlace(p); }
     for (const p of data.photos) { await savePhoto({ ...p, blob: base64ToBlob(p.blob, 'image/jpeg'), thumb: base64ToBlob(p.thumb, 'image/jpeg') }); }
     for (const w of data.works) { await saveWork({ ...w, thoughts: (w.thoughts || []).map(t => t.audio ? { ...t, audio: base64ToBlob(t.audio, t.audioType || 'audio/mp4') } : t) }); }
     if (data.dna) await DB.setKV('dna', data.dna);
     if (data.artist) await DB.setKV('artist', data.artist);
-    if (data.avatar) await DB.setKV('avatar', base64ToBlob(data.avatar, 'image/jpeg'));
+    if (data.avatar) await DB.setKV('avatar', await base64ToBlob(data.avatar, 'image/jpeg').arrayBuffer());
     if (data.settings && data.settings.name && !S.settings.name) { S.settings.name = data.settings.name; await saveSettings(); }
     await loadAll(); toast('匯入完成。'); render();
   } catch (e) { toast('匯入失敗：' + e.message, 5000); }
 }
 
 /* ---------- 動作 ---------- */
+/* 全螢幕看照片：兩指縮放、雙擊放大、左右切換 */
+function openViewer(ps, start) {
+  let i = start, scale = 1, tx = 0, ty = 0;
+  const v = document.createElement('div'); v.className = 'viewer'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-label', '放大看照片');
+  v.innerHTML = `<img alt=""><div class="vbar"><span class="vcount"></span><button class="ibtn vclose" aria-label="關閉">${I.x}</button></div><button class="ibtn vprev" aria-label="上一張">${I.back}</button><button class="ibtn vnext" aria-label="下一張">${I.next}</button>`;
+  document.body.appendChild(v);
+  const img = v.querySelector('img');
+  const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
+  const show = () => { img.src = purl(ps[i], 'full'); scale = 1; tx = ty = 0; apply(); v.querySelector('.vcount').textContent = `${ps[i].type}・${i + 1} / ${ps.length}`; v.querySelector('.vprev').style.visibility = i > 0 ? 'visible' : 'hidden'; v.querySelector('.vnext').style.visibility = i < ps.length - 1 ? 'visible' : 'hidden'; };
+  const close = () => { v.remove(); if (S.route.name === 'work') { S.ui.photoIdx = i; render(); } };
+  v.querySelector('.vclose').onclick = close;
+  v.querySelector('.vprev').onclick = () => { if (i > 0) { i--; show(); } };
+  v.querySelector('.vnext').onclick = () => { if (i < ps.length - 1) { i++; show(); } };
+  const pts = new Map(); let base = null, lastTap = 0, swipeX = null;
+  img.addEventListener('pointerdown', e => {
+    img.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) { const now = Date.now(); if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = ty = 0; } else scale = 2.5; apply(); } lastTap = now; swipeX = e.clientX; }
+    const a = [...pts.values()]; base = { scale, tx, ty, d: a.length > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, x: a[0].x, y: a[0].y };
+  });
+  img.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); const a = [...pts.values()];
+    if (a.length > 1 && base.d) { scale = Math.min(6, Math.max(1, base.scale * Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) / base.d)); if (scale === 1) { tx = ty = 0; } apply(); }
+    else if (scale > 1) { tx = base.tx + (a[0].x - base.x); ty = base.ty + (a[0].y - base.y); apply(); }
+  });
+  const up = e => {
+    if (pts.size === 1 && scale === 1 && swipeX != null) { const dx = e.clientX - swipeX; if (dx < -60 && i < ps.length - 1) { i++; show(); } else if (dx > 60 && i > 0) { i--; show(); } }
+    pts.delete(e.pointerId); const a = [...pts.values()]; base = a.length ? { scale, tx, ty, d: 0, x: a[0].x, y: a[0].y } : null; if (!a.length) swipeX = null;
+  };
+  img.addEventListener('pointerup', up); img.addEventListener('pointercancel', up);
+  show();
+}
 const ACT = {
+  zoom: () => { const w = workOf(S.route.p.id); const ps = photosOf(w.id); if (ps.length) openViewer(ps, Math.min(S.ui.photoIdx, ps.length - 1)); },
   tab: d => tab(d.to), go: d => go(d.to, { id: d.id }), back: () => back(),
   openCamera: () => { tab('camera'); },
   pickLib: () => $('#libInput').click(),
@@ -709,11 +800,18 @@ const ACT = {
   saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, titleOriginal: $('#eiTo').value.trim(), artist: $('#eiA').value.trim(), artistOriginal: $('#eiAo').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); if (w.status === 'pending' && w.title !== '待辨識的作品') w.status = 'ready'; S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
   reanalyze: () => { const w = workOf(S.route.p.id); if (!w) return; if (w.queued && w.status === 'pending') { w.hold = false; toast('排進辨識佇列了。'); runQueue(); return; } if (!S.ui.busy[w.id]) reanalyze(w, w.status === 'pending'); },
   retryAll: () => retryPending(),
+  cleanBroken: async () => {
+    const bs = S.photos.filter(p => p.broken); if (!await ask(`要清除 ${bs.length} 張遺失檔案的照片嗎？只剩這些照片的作品也會一起移除。手機相簿裡的原圖不受影響。`)) return;
+    for (const p of bs) { await DB.del('photos', p.id); } S.photos = S.photos.filter(p => !p.broken);
+    for (const w of [...S.works]) if (!photosOf(w.id).length) { S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id); }
+    for (const pl of S.places) if (pl.coverPhotoId && !S.photos.some(p => p.id === pl.coverPhotoId)) { pl.coverPhotoId = null; await savePlace(pl); }
+    toast('清除好了。'); render();
+  },
   artistDna: async () => {
     const w = workOf(S.route.p.id); if (S.ui.busy.artist) return; S.ui.busy.artist = true; render();
     try { const k = norm(w.artistOriginal || w.artist); const works = S.works.filter(x => norm(x.artistOriginal || x.artist) === k).map(x => x.title); S.artist[k] = await AI.artistDna(S.settings, { artist: w.artist, artistOriginal: w.artistOriginal, works }); await DB.setKV('artist', S.artist); }
     catch (e) { toast(e.message); }
-    delete S.ui.busy.artist; render();
+    delete S.ui.busy.artist; bgRender();
   },
   write: () => { S.ui.writing = !S.ui.writing; render(); if (S.ui.writing) setTimeout(() => $('#noteIn') && $('#noteIn').focus(), 50); },
   saveNote: async () => { const w = workOf(S.route.p.id); const t = $('#noteIn').value.trim(); if (t) { w.thoughts = [{ id: uid(), at: Date.now(), kind: 'text', text: t }, ...(w.thoughts || [])]; await saveWork(w); toast('感想已存下來。'); } S.ui.writing = false; render(); },
@@ -737,13 +835,14 @@ const ACT = {
   makeCover: async () => { const w = workOf(S.route.p.id); const p = photosOf(w.id)[S.ui.photoIdx]; const pl = placeOf(w.placeId); pl.coverPhotoId = p.id; await savePlace(pl); S.ui.sheet = null; toast('已設成封面。'); render(); },
   removePhoto: async () => {
     const w = workOf(S.route.p.id); const ps = photosOf(w.id); const p = ps[S.ui.photoIdx];
-    if (!confirm(ps.length <= 1 ? '這是這件作品唯一的照片，刪除後整件作品也會移除。確定嗎？（手機相簿裡的原圖不受影響）' : '確定刪除這張照片嗎？（手機相簿裡的原圖不受影響）')) return;
+    if (!p) return;
+    if (!await ask(ps.length <= 1 ? '這是這件作品唯一的照片，刪除後整件作品也會移除。手機相簿裡的原圖不受影響。' : '要刪除這張照片嗎？手機相簿裡的原圖不受影響。', '刪除')) return;
     S.photos = S.photos.filter(x => x.id !== p.id); await DB.del('photos', p.id); S.ui.sheet = null; S.ui.photoIdx = 0;
     if (ps.length <= 1) { S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id); back(); return; }
     render();
   },
   deleteWork: async () => {
-    const w = workOf(S.route.p.id); if (!confirm(`確定刪除《${w.title}》和它的 ${photosOf(w.id).length} 張照片嗎？（手機相簿裡的原圖不受影響）`)) return;
+    const w = workOf(S.route.p.id); if (!await ask(`確定刪除《${w.title}》和它的 ${photosOf(w.id).length} 張照片嗎？（手機相簿裡的原圖不受影響）`)) return;
     for (const p of photosOf(w.id)) { await DB.del('photos', p.id); } S.photos = S.photos.filter(p => p.workId !== w.id);
     S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id); back();
   },
@@ -770,12 +869,12 @@ const ACT = {
   length: async d => { S.settings.length = d.v; await saveSettings(); render(); },
   exportData: () => { if (!S.ui.busy.export) exportData(); },
   importData: () => $('#importInput').click(),
-  resetAll: async () => { if (!confirm('確定要清除這支手機上的所有作品、照片和設定嗎？這個動作無法復原，建議先匯出備份。')) return; for (const s of ['photos', 'works', 'places', 'kv']) await DB.clear(s); location.reload(); },
+  resetAll: async () => { if (!await ask('確定要清除這支手機上的所有作品、照片和設定嗎？這個動作無法復原，建議先匯出備份。')) return; for (const s of ['photos', 'works', 'places', 'kv']) await DB.clear(s); location.reload(); },
   ob: d => { const k = $('#keyIn'); if (k && k.value.trim()) S.settings.keys[S.settings.provider] = k.value.trim(); saveSettings(); S.ui.ob = +d.v; S.ui.obMsg = ''; render(); scrollTo(0, 0); },
   obName: async () => { S.settings.name = $('#obName').value.trim(); await saveSettings(); S.ui.ob = 2; render(); scrollTo(0, 0); },
   obDone: async () => { S.settings.onboarded = true; await saveSettings(); tab('home'); }
 };
-async function setAvatar(blob) { await DB.setKV('avatar', blob); if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(blob); }
+async function setAvatar(blob) { await DB.setKV('avatar', await blob.arrayBuffer()); if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(blob); }
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -799,15 +898,25 @@ async function loadAll() {
   S.settings = { ...DEFAULTS, ...(await DB.getKV('settings', {})) };
   S.settings.keys = S.settings.keys || {}; S.settings.models = S.settings.models || {};
   [S.works, S.places, S.photos] = await Promise.all([DB.all('works'), DB.all('places'), DB.all('photos')]);
+  S.works = S.works.map(reviveWork); S.photos = S.photos.map(revivePhoto);
+  // 舊版存的照片：讀得到就轉成新格式，讀不到就標示「檔案遺失」
+  for (const p of S.photos) {
+    if (p.v === 2 || p.broken) { if (!p.thumb && !p.blob) p.broken = true; continue; }
+    try { await p.thumb.slice(0, 16).arrayBuffer(); await p.blob.slice(0, 16).arrayBuffer(); await savePhoto(p); p.v = 2; }
+    catch (e) { p.broken = true; p.blob = null; p.thumb = null; await DB.put('photos', { ...p }); }
+  }
+  for (const w of S.works) if ((w.thoughts || []).some(t => t.audio && !t.audioBuf)) { try { await saveWork(w); } catch (e) { /* skip */ } }
+
   // 把舊資料裡的簡體字、中國大陸譯名改成台灣用法
   for (const [store, arr] of [['places', S.places], ['works', S.works]]) {
     for (let i = 0; i < arr.length; i++) {
       const { thoughts, ...rest } = arr[i]; const fixed = { ...ZH.deep(rest), thoughts };
-      if (JSON.stringify(rest) !== JSON.stringify(ZH.deep(rest))) { arr[i] = fixed; await DB.put(store, fixed); }
+      if (JSON.stringify(rest) !== JSON.stringify(ZH.deep(rest))) { arr[i] = fixed; await (store === 'works' ? saveWork(fixed) : savePlace(fixed)); }
     }
   }
-  S.session = await DB.getKV('session', null); S.dna = await DB.getKV('dna', null); S.artist = await DB.getKV('artist', {}) || {};
-  const av = await DB.getKV('avatar', null); if (av) { if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(av); }
+  S.session = await DB.getKV('session', null);
+  await mergeDuplicatePlaces(); if (S.session) await DB.setKV('session', S.session); S.dna = await DB.getKV('dna', null); S.artist = await DB.getKV('artist', {}) || {};
+  let av = await DB.getKV('avatar', null); if (av instanceof ArrayBuffer) av = new Blob([av], { type: 'image/jpeg' }); else if (av) { try { await av.slice(0, 8).arrayBuffer(); } catch (e) { av = null; } } if (av) { if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(av); }
   URLS.forEach(u => URL.revokeObjectURL(u)); URLS.clear();
 }
 (async function start() {
