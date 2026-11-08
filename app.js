@@ -77,7 +77,13 @@ function reviveWork(w) { return { ...w, thoughts: (w.thoughts || []).map(t => t.
 const BROKEN_IMG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#EFE8DC"/><text x="100" y="96" font-size="20" text-anchor="middle" fill="#6B5D55" font-family="sans-serif">照片檔案遺失</text><text x="100" y="124" font-size="15" text-anchor="middle" fill="#6B5D55" font-family="sans-serif">可從相簿重新補上</text></svg>');
 const savePlace = p => DB.put('places', p);
 function photosOf(workId) { return S.photos.filter(p => p.workId === workId).sort((a, b) => a.takenAt - b.takenAt); }
-function mainPhoto(w) { const all = photosOf(w.id); const ps = all.filter(p => !p.broken).length ? all.filter(p => !p.broken) : all; return ps.find(p => p.type === '作品') || ps.find(p => p.type === '我與作品') || ps.find(p => p.type === '細節') || ps[0]; }
+const TYPE_RANK = { '作品': 0, '我與作品': 1, '細節': 2, '館外照': 3, '複製品': 3, '說明牌': 5 };
+function orderedPhotos(w) {
+  return photosOf(w.id).sort((a, b) => (b.id === w.coverId) - (a.id === w.coverId) || (!!a.broken - !!b.broken) || (TYPE_RANK[a.type] ?? 4) - (TYPE_RANK[b.type] ?? 4) || a.takenAt - b.takenAt);
+}
+function mainPhoto(w) { const c = w.coverId && S.photos.find(p => p.id === w.coverId && p.workId === w.id && !p.broken); if (c) return c;
+  return mainPhotoAuto(w); }
+function mainPhotoAuto(w) { const all = photosOf(w.id); const ps = all.filter(p => !p.broken).length ? all.filter(p => !p.broken) : all; return ps.find(p => p.type === '作品') || ps.find(p => p.type === '我與作品') || ps.find(p => p.type === '細節') || ps[0]; }
 const placeOf = id => S.places.find(p => p.id === id);
 const workOf = id => S.works.find(w => w.id === id);
 const worksAt = placeId => S.works.filter(w => w.placeId === placeId);
@@ -214,7 +220,7 @@ function viewPlace() {
 
 function viewWork() {
   const w = workOf(S.route.p.id); if (!w) return viewHome();
-  const ps = photosOf(w.id); const idx = Math.min(S.ui.photoIdx, Math.max(0, ps.length - 1)); const p = ps[idx];
+  const ps = orderedPhotos(w); const idx = Math.min(S.ui.photoIdx, Math.max(0, ps.length - 1)); const p = ps[idx];
   const pl = placeOf(w.placeId); const dates = seenDates(w);
   const prov = AI.PROVIDERS[w.aiProvider || S.settings.provider] || AI.PROVIDERS.gemini;
   let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}${esc(pl ? pl.name : '返回')}</button>
@@ -269,7 +275,7 @@ function sheetHtml(w, p, ps) {
   let h = `<button class="scrim" data-act="sheet" data-v="" aria-label="關閉"></button><div class="sheet" role="dialog" aria-label="整理這張照片">
   <div class="row" style="margin-bottom:14px">${p ? `<img src="${purl(p)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:14px 8px 16px 6px">` : ''}<div style="line-height:1.5"><strong>整理這張照片</strong><br><span class="muted small">目前在《${esc(w.title)}》・${esc(p ? p.type : '')}</span></div></div>`;
   if (S.ui.sheet === 'menu') {
-    h += `<div style="display:flex;flex-direction:column;gap:8px">${[['sheet', 'move', '移到另一件作品（拍到別的作品了）'], ['sheet', 'type', '改照片類型（作品、細節、說明牌⋯）'], ['split', '', '獨立成新的一件作品'], ['makeCover', '', '設成這個地點的封面'], ['removePhoto', '', '刪除這張照片']].map(([a, v, l]) => `<button class="btn" data-act="${a}" data-v="${v}" style="justify-content:flex-start">${l}</button>`).join('')}<button class="btn ghost" data-act="sheet" data-v="">取消</button></div>`;
+    h += `<div style="display:flex;flex-direction:column;gap:8px">${[['sheet', 'move', '移到另一件作品（拍到別的作品了）'], ['sheet', 'type', '改照片類型（作品、細節、說明牌⋯）'], ['split', '', '獨立成新的一件作品'], ['makeFirst', '', '設成這件作品的第一張（代表照片）'], ['makeCover', '', '設成這個地點的封面'], ['removePhoto', '', '刪除這張照片']].map(([a, v, l]) => `<button class="btn" data-act="${a}" data-v="${v}" style="justify-content:flex-start">${l}</button>`).join('')}<button class="btn ghost" data-act="sheet" data-v="">取消</button></div>`;
   } else if (S.ui.sheet === 'type') {
     h += `<p style="margin:0 0 8px">這張照片是：</p><div class="row wrap">${TYPES.map(t => `<button class="opt ${p && p.type === t ? 'on' : ''}" data-act="setType" data-v="${t}">${t}</button>`).join('')}</div><button class="btn ghost block" data-act="sheet" data-v="menu" style="margin-top:14px">返回</button>`;
   } else if (S.ui.sheet === 'move') {
@@ -782,7 +788,7 @@ function openViewer(ps, start) {
   show();
 }
 const ACT = {
-  zoom: () => { const w = workOf(S.route.p.id); const ps = photosOf(w.id); if (ps.length) openViewer(ps, Math.min(S.ui.photoIdx, ps.length - 1)); },
+  zoom: () => { const w = workOf(S.route.p.id); const ps = orderedPhotos(w); if (ps.length) openViewer(ps, Math.min(S.ui.photoIdx, ps.length - 1)); },
   tab: d => tab(d.to), go: d => go(d.to, { id: d.id }), back: () => back(),
   openCamera: () => { tab('camera'); },
   pickLib: () => $('#libInput').click(),
@@ -818,23 +824,24 @@ const ACT = {
   startRec: d => startRec(d.id || (S.route.name === 'work' ? S.route.p.id : (S.last && S.last.workId))),
   stopRec: () => stopRec(),
   sheet: d => { S.ui.sheet = d.v || null; render(); },
-  setType: async d => { const w = workOf(S.route.p.id); const p = photosOf(w.id)[S.ui.photoIdx]; p.type = d.v; await savePhoto(p); S.ui.sheet = null; toast(`已改成「${d.v}」。`); render(); },
+  setType: async d => { const w = workOf(S.route.p.id); const p = orderedPhotos(w)[S.ui.photoIdx]; p.type = d.v; await savePhoto(p); S.ui.sheet = null; toast(`已改成「${d.v}」。`); render(); },
   movePhoto: async d => {
-    const w = workOf(S.route.p.id); const ps = photosOf(w.id); const p = ps[S.ui.photoIdx]; const t = workOf(d.id);
+    const w = workOf(S.route.p.id); const ps = orderedPhotos(w); const p = ps[S.ui.photoIdx]; const t = workOf(d.id);
     p.workId = t.id; await savePhoto(p); S.ui.sheet = null; S.ui.photoIdx = 0;
     if (ps.length <= 1) { S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id); toast(`已移到《${t.title}》。原本那件沒有照片了，已自動移除。`); go('work', { id: t.id }); S.stack.pop(); return; }
     toast(`已移到《${t.title}》。`); render();
   },
   split: async () => {
-    const w = workOf(S.route.p.id); const ps = photosOf(w.id); const p = ps[S.ui.photoIdx];
+    const w = workOf(S.route.p.id); const ps = orderedPhotos(w); const p = ps[S.ui.photoIdx];
     if (ps.length <= 1) { S.ui.sheet = null; toast('這件作品只有這一張照片了。'); render(); return; }
     const nw = { id: uid(), placeId: w.placeId, title: '新的作品', status: 'pending', thoughts: [], fav: false, createdAt: Date.now() };
     S.works.push(nw); await saveWork(nw); p.workId = nw.id; await savePhoto(p); S.ui.sheet = null;
     go('work', { id: nw.id }); reanalyze(nw, false);
   },
-  makeCover: async () => { const w = workOf(S.route.p.id); const p = photosOf(w.id)[S.ui.photoIdx]; const pl = placeOf(w.placeId); pl.coverPhotoId = p.id; await savePlace(pl); S.ui.sheet = null; toast('已設成封面。'); render(); },
+  makeFirst: async () => { const w = workOf(S.route.p.id); const p = orderedPhotos(w)[S.ui.photoIdx]; if (!p) return; w.coverId = p.id; await saveWork(w); S.ui.sheet = null; S.ui.photoIdx = 0; toast('已設成第一張，列表上也會用這張當代表。'); render(); },
+  makeCover: async () => { const w = workOf(S.route.p.id); const p = orderedPhotos(w)[S.ui.photoIdx]; const pl = placeOf(w.placeId); pl.coverPhotoId = p.id; await savePlace(pl); S.ui.sheet = null; toast('已設成封面。'); render(); },
   removePhoto: async () => {
-    const w = workOf(S.route.p.id); const ps = photosOf(w.id); const p = ps[S.ui.photoIdx];
+    const w = workOf(S.route.p.id); const ps = orderedPhotos(w); const p = ps[S.ui.photoIdx];
     if (!p) return;
     if (!await ask(ps.length <= 1 ? '這是這件作品唯一的照片，刪除後整件作品也會移除。手機相簿裡的原圖不受影響。' : '要刪除這張照片嗎？手機相簿裡的原圖不受影響。', '刪除')) return;
     S.photos = S.photos.filter(x => x.id !== p.id); await DB.del('photos', p.id); S.ui.sheet = null; S.ui.photoIdx = 0;
