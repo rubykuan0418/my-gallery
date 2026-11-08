@@ -120,3 +120,6 @@ label.lab{display:block;font-size:14px;color:var(--ink2);margin:0 0 4px}
 .ring{border-radius:50%;display:grid;place-items:center}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.orig{display:block;font-family:var(--serif);font-style:italic;font-weight:400;font-size:.92em;color:var(--ink2);line-height:1.4;margin:1px 0 2px}
+.orig-i{font-family:var(--serif);font-style:italic;color:var(--ink2)}

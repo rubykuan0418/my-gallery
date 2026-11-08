@@ -79,6 +79,9 @@ function visitsOf(placeId) {
 }
 function allVisits() { return S.places.flatMap(pl => visitsOf(pl.id).map(v => ({ ...v, place: pl }))).sort((a, b) => b.last - a.last); }
 function workWeight(w) { const ps = photosOf(w.id); return 1 + (w.fav ? 2 : 0) + ((w.thoughts || []).length ? 1 : 0) + (ps.some(p => p.type === '我與作品') ? 0.8 : 0) + (ps.length >= 3 ? 0.4 : 0) + (seenDates(w).length > 1 ? 1 : 0); }
+const origOf = (zh, o) => (o && norm(o) !== norm(zh) ? o : '');
+const titleSub = w => { const o = origOf(w.title, w.titleOriginal); return o ? `<span class="orig">${esc(o)}</span>` : ''; };
+const artistHtml = (w, empty = '作者不明') => { const o = origOf(w.artist, w.artistOriginal); return esc(w.artist || (o ? '' : empty)) + (o ? `${w.artist ? ' ' : ''}<span class="orig-i">${esc(o)}</span>` : ''); };
 const eligible = () => S.works.filter(w => w.status === 'ready' && !w.isCopy && w.dims);
 
 /* ---------- 導覽 ---------- */
@@ -148,7 +151,7 @@ function viewHome() {
     let ws = [...S.works].sort((a, b) => lastAt(b) - lastAt(a));
     if (S.ui.favOnly) ws = ws.filter(w => w.fav);
     h += `<div class="row" style="justify-content:space-between;margin:18px 0 14px"><span class="muted small">${S.ui.favOnly ? '最喜歡的作品' : `全部 ${S.works.length} 件・最近的在上面`}</span><button class="opt ${S.ui.favOnly ? 'on' : ''}" aria-pressed="${S.ui.favOnly}" data-act="favOnly">只看最喜歡</button></div><div class="grid2">`;
-    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}</strong><span class="muted small" style="position:relative">${esc(w.artist || '作者不明')}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
+    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}${titleSub(w)}</strong><span class="muted small" style="position:relative">${artistHtml(w)}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
     h += `</div>`;
   } else {
     h += `<div style="border-left:1px solid var(--gold);margin:26px 0 0 8px">`;
@@ -173,7 +176,7 @@ function viewPlace() {
   <p class="sec" style="margin-top:28px">紀錄・最近的在上面</p><p class="muted small" style="margin:-4px 0 12px">這些是 AI 自動整理的。覺得哪張放錯了，點進作品，按「這張放錯了？」就能調整。</p>`;
   vs.forEach(v => {
     h += `<p style="margin:16px 0 0"><strong>${fmtDate(v.date)}</strong> <span class="muted small">${fmtTime(v.first)}–${fmtTime(v.last)}・${v.works.length} 件・${v.photos} 張</span></p><div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">`;
-    v.works.forEach(w => { const m = mainPhoto(w); h += `<button class="hit listrow" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="">` : '<span style="width:58px;height:58px"></span>'}<span class="grow" style="line-height:1.5"><strong style="font-size:15px">${esc(w.title)}</strong><br><span class="muted small">${esc(w.artist || (w.status === 'pending' ? '待辨識' : '作者不明'))}・${photosOf(w.id).length} 張</span></span>${I.next}</button>`; });
+    v.works.forEach(w => { const m = mainPhoto(w); h += `<button class="hit listrow" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="">` : '<span style="width:58px;height:58px"></span>'}<span class="grow" style="line-height:1.5"><strong style="font-size:15px">${esc(w.title)}</strong>${titleSub(w)}<span class="muted small">${artistHtml(w, w.status === 'pending' ? '待辨識' : '作者不明')}・${photosOf(w.id).length} 張</span></span>${I.next}</button>`; });
     h += `</div>`;
   });
   return h + `</main>${nav('home')}`;
@@ -193,10 +196,10 @@ function viewWork() {
   if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
   h += `<div style="margin-top:20px">${w.isCopy ? '<span class="chip">複製品・不算進美感 DNA</span> ' : ''}${w.kind === 'street' ? '<span class="chip" style="background:var(--sage)">路上的小美好</span>' : ''}`;
   if (S.ui.editInfo) {
-    h += `<div class="card" style="margin-top:10px">${[['eiT', '作品名稱', w.title], ['eiA', '藝術家', w.artist], ['eiY', '年代', w.year], ['eiM', '媒材', w.medium]].map(([id, l, v]) => `<label class="lab" for="${id}">${l}</label><input id="${id}" class="field" value="${esc(v || '')}" style="margin-bottom:10px">`).join('')}<p class="muted tiny" style="margin:0 0 10px">存下來後，可以按「依新資料重寫解說」讓 AI 重新整理。</p><div class="row"><button class="btn grow" data-act="editInfo">取消</button><button class="btn solid grow" data-act="saveInfo">存下來</button></div></div>`;
+    h += `<div class="card" style="margin-top:10px">${[['eiT', '作品名稱（中文）', w.title], ['eiTo', '作品原文或英文名稱', w.titleOriginal], ['eiA', '藝術家（中文）', w.artist], ['eiAo', '藝術家原文或英文名字', w.artistOriginal], ['eiY', '年代', w.year], ['eiM', '媒材', w.medium]].map(([id, l, v]) => `<label class="lab" for="${id}">${l}</label><input id="${id}" class="field" value="${esc(v || '')}" style="margin-bottom:10px">`).join('')}<p class="muted tiny" style="margin:0 0 10px">存下來後，可以按「依新資料重寫解說」讓 AI 重新整理。</p><div class="row"><button class="btn grow" data-act="editInfo">取消</button><button class="btn solid grow" data-act="saveInfo">存下來</button></div></div>`;
   } else {
-    h += `<h1 class="serif" style="margin:6px 0 0;font-size:30px;line-height:1.25">${esc(w.title)}</h1>${w.titleOriginal && w.titleOriginal !== w.title ? `<p class="serif muted" style="margin:0;font-size:19px">${esc(w.titleOriginal)}</p>` : ''}
-    <p style="margin:6px 0 0;font-size:17px">${esc(w.artist || '作者不明')} <span class="muted">${esc(w.artistOriginal && w.artistOriginal !== w.artist ? w.artistOriginal : '')}</span></p>
+    h += `<h1 class="serif" style="margin:6px 0 0;font-size:30px;line-height:1.25">${esc(w.title)}</h1>${origOf(w.title, w.titleOriginal) ? `<p class="serif" style="margin:2px 0 0;font-size:19px;color:var(--ink2);font-style:italic">${esc(w.titleOriginal)}</p>` : ''}
+    <p style="margin:8px 0 0;font-size:17px">${artistHtml(w)}</p>
     <button class="linkbtn" data-act="editInfo">作品名稱或藝術家不對？修改</button>`;
   }
   h += `<div class="metagrid">${[['年代', w.year], ['媒材', w.medium], ['地點', pl && pl.name], ['見過 ' + dates.length + ' 次', dates.map(d => d.replace(/-/g, '.')).join('、')]].map(([a, b]) => `<div><span class="muted tiny">${a}</span><br>${esc(b || '—')}</div>`).join('')}</div></div>`;
@@ -242,7 +245,7 @@ function sheetHtml(w, p, ps) {
     const targets = worksAt(w.placeId).filter(x => x.id !== w.id).sort((a, b) => lastAt(b) - lastAt(a));
     h += `<p style="margin:0 0 8px">要移到哪一件作品？<span class="muted small">（同一個地點）</span></p><div style="display:flex;flex-direction:column;gap:8px">`;
     if (!targets.length) h += `<p class="muted small">這個地點沒有其他作品。可以改用「獨立成新的一件作品」。</p>`;
-    targets.forEach(x => { const m = mainPhoto(x); h += `<button class="hit listrow" data-act="movePhoto" data-id="${x.id}">${m ? `<img src="${purl(m)}" alt="">` : ''}<span class="grow" style="line-height:1.4"><strong style="font-size:15px">${esc(x.title)}</strong><br><span class="muted tiny">${esc(x.artist || '')}・${photosOf(x.id).length} 張</span></span></button>`; });
+    targets.forEach(x => { const m = mainPhoto(x); h += `<button class="hit listrow" data-act="movePhoto" data-id="${x.id}">${m ? `<img src="${purl(m)}" alt="">` : ''}<span class="grow" style="line-height:1.4"><strong style="font-size:15px">${esc(x.title)}</strong>${titleSub(x)}<span class="muted tiny">${artistHtml(x, '')}・${photosOf(x.id).length} 張</span></span></button>`; });
     h += `</div><button class="btn ghost block" data-act="sheet" data-v="menu" style="margin-top:14px">返回</button>`;
   }
   return h + `</div>`;
@@ -261,7 +264,7 @@ function viewCamera() {
   else if (lw && L.grouped) h += `<div class="pill" role="status" style="background:var(--sage)">已收在一起（${photosOf(lw.id).length} 張）・《${esc(lw.title)}》</div>`;
   else if (lw) {
     const m = mainPhoto(lw);
-    h += `<div class="result"><div class="hd"><div class="grow"><span class="chip" style="background:var(--card)">${lw.status === 'pending' ? '待辨識' : seenDates(lw).length > 1 ? '第 ' + seenDates(lw).length + ' 次見到' : lw.kind === 'street' ? '路上的小美好' : '第一次見到'}</span><h2 class="serif" style="margin:6px 0 0;font-size:24px;line-height:1.3">${esc(lw.title)}</h2><p class="muted small" style="margin:0">${esc([lw.artist, lw.year].filter(Boolean).join('・'))}</p></div>${m ? `<img src="${purl(m)}" alt="">` : ''}</div>
+    h += `<div class="result"><div class="hd"><div class="grow"><span class="chip" style="background:var(--card)">${lw.status === 'pending' ? '待辨識' : seenDates(lw).length > 1 ? '第 ' + seenDates(lw).length + ' 次見到' : lw.kind === 'street' ? '路上的小美好' : '第一次見到'}</span><h2 class="serif" style="margin:6px 0 0;font-size:24px;line-height:1.3">${esc(lw.title)}</h2>${titleSub(lw)}<p class="muted small" style="margin:2px 0 0">${artistHtml(lw, '')}${lw.year ? '・' + esc(lw.year) : ''}</p></div>${m ? `<img src="${purl(m)}" alt="">` : ''}</div>
     <div style="padding:14px 16px 16px"><p style="margin:0 0 12px">${esc(lw.status === 'pending' ? (lw.error || '有網路後會自動辨識。') : lw.short || '')}</p><div class="grid2" style="gap:8px"><button class="btn" data-act="go" data-to="work" data-id="${lw.id}">完整解說</button><button class="btn" data-act="startRec" data-id="${lw.id}">${I.mic}說感想</button><button class="btn" data-act="fixLast" data-id="${lw.id}">這不對</button><button class="btn solid" data-act="dismissLast">繼續看展</button></div></div></div>`;
   }
   if (S.rec) h += `<div class="pill row" role="status">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<span class="grow"><strong>錄音中</strong><br><span class="muted tiny">再按一次麥克風就結束</span></span></div>`;
@@ -283,7 +286,7 @@ function viewSummary() {
   if (v) {
     const mins = Math.max(1, Math.round((v.last - v.first) / 60000));
     const nThoughts = v.works.reduce((a, w) => a + (w.thoughts || []).filter(t => ymd(t.at) === d).length, 0);
-    h += `<div class="row" style="margin-top:16px">${[[v.works.length, '件作品'], [v.photos, '張照片'], nThoughts ? [nThoughts, '段感想'] : [mins, '分鐘']].map(([a, b], i) => `<div class="grow" style="background:${PASTEL[i]};border-radius:${RAD[i]};padding:12px 14px"><span class="serif" style="display:block;font-size:36px;line-height:1.1">${a}</span><span class="small">${b}</span></div>`).join('')}</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:22px">${v.works.map(w => { const m = mainPhoto(w); return `<button class="hit row" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="" style="width:58px;height:58px;object-fit:cover;padding:3px;border:1px solid var(--gold);background:var(--card)">` : ''}<span class="grow" style="line-height:1.5"><strong>${esc(w.title)}</strong><br><span class="muted small">${esc(w.artist || '')}${w.artist ? '・' : ''}${photosOf(w.id).filter(p => ymd(p.takenAt) === d).length} 張</span></span></button>`; }).join('')}</div>`;
+    h += `<div class="row" style="margin-top:16px">${[[v.works.length, '件作品'], [v.photos, '張照片'], nThoughts ? [nThoughts, '段感想'] : [mins, '分鐘']].map(([a, b], i) => `<div class="grow" style="background:${PASTEL[i]};border-radius:${RAD[i]};padding:12px 14px"><span class="serif" style="display:block;font-size:36px;line-height:1.1">${a}</span><span class="small">${b}</span></div>`).join('')}</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:22px">${v.works.map(w => { const m = mainPhoto(w); return `<button class="hit row" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="" style="width:58px;height:58px;object-fit:cover;padding:3px;border:1px solid var(--gold);background:var(--card)">` : ''}<span class="grow" style="line-height:1.5"><strong>${esc(w.title)}</strong>${titleSub(w)}<span class="muted small">${artistHtml(w, '')}${w.artist || w.artistOriginal ? '・' : ''}${photosOf(w.id).filter(p => ymd(p.takenAt) === d).length} 張</span></span></button>`; }).join('')}</div>`;
   } else h += `<p class="muted">今天還沒有拍照。</p>`;
   return h + `<p class="card" style="margin-top:22px;background:var(--sky)">回家想補可以補，不補也沒關係，今天的畫廊已經在這裡了。</p><button class="btn solid block" data-act="tab" data-to="home" style="margin-top:12px">回到畫廊</button></main>`;
 }
@@ -344,7 +347,7 @@ function viewDna() {
   if (S.ui.fb) h += `<div style="margin-top:12px"><label class="lab" for="fbIn">用一句話說說看哪裡不像你</label><textarea id="fbIn" class="field" rows="2" placeholder="例如：我其實也很喜歡明亮的畫">${esc(S.settings.feedback || '')}</textarea><div class="row" style="margin-top:8px"><button class="btn grow" data-act="fb">取消</button><button class="btn solid grow" data-act="saveFb">送出</button></div></div>`;
   else h += `<button class="linkbtn" data-act="fb">覺得哪裡不太像你？告訴策展人</button>`;
   h += `<p style="margin:14px 0 6px"><strong>你常收藏的題材</strong></p><div class="row wrap">${D.subjects.map(s => `<span class="chip" style="background:var(--sage);font-size:15px;padding:2px 14px">${esc(s)}</span>`).join('')}</div>`;
-  if ((d.closest || []).length) h += `<p class="sec" style="margin-top:28px">你收藏裡最像你的藝術家</p><div style="display:flex;flex-direction:column;gap:10px">${d.closest.map((a, i) => `<div class="card row" style="border-radius:${RAD[i]}"><span class="serif ring" style="width:42px;height:42px;background:${PASTEL[i]};font-size:20px;flex:none;border-radius:24px 16px 26px 14px">${i + 1}</span><span class="grow" style="line-height:1.5"><strong>${esc(a.artist)}</strong><br><span class="muted small">${esc(a.why)}</span></span></div>`).join('')}</div>`;
+  if ((d.closest || []).length) h += `<p class="sec" style="margin-top:28px">你收藏裡最像你的藝術家</p><div style="display:flex;flex-direction:column;gap:10px">${d.closest.map((a, i) => `<div class="card row" style="border-radius:${RAD[i]}"><span class="serif ring" style="width:42px;height:42px;background:${PASTEL[i]};font-size:20px;flex:none;border-radius:24px 16px 26px 14px">${i + 1}</span><span class="grow" style="line-height:1.5"><strong>${esc(a.artist)}</strong>${a.artistOriginal ? ` <span class="orig-i">${esc(a.artistOriginal)}</span>` : ''}<br><span class="muted small">${esc(a.why)}</span></span></div>`).join('')}</div>`;
   if ((d.recs || []).length) h += `<div style="margin:30px -22px 0;padding:26px 22px 28px;background:var(--sky);border-radius:48px 48px 0 0"><p class="sec" style="margin:0 0 4px">策展人推薦</p><h2 class="serif" style="margin:0 0 14px;font-size:24px;line-height:1.35">你可能也會喜歡，<br>但還沒認識的藝術家</h2><div style="display:flex;flex-direction:column;gap:12px">${d.recs.map((r, i) => `<div class="card" style="border-radius:${RAD[i]}"><strong style="font-size:18px">${esc(r.artist)}</strong> <span class="serif muted">${esc(r.artistOriginal || '')}</span><p style="margin:6px 0 0"><span class="muted">為什麼推薦：</span>${esc(r.why)}</p><p class="small row" style="margin:6px 0 0;align-items:flex-start;gap:6px">${I.pin}<span>${esc(r.where || '')}</span></p></div>`).join('')}</div></div>`;
   if (d.surprise && d.surprise.title) h += `<div class="card" style="margin-top:22px;background:var(--pink)"><p class="sec" style="margin:0">讓你意外的收藏</p><strong>${esc(d.surprise.title)}</strong><p style="margin:2px 0 0">${esc(d.surprise.text)}</p></div>`;
   h += `<p class="muted small" style="margin-top:16px">在作品頁點「最喜歡」，策展人會更了解你。</p><button class="btn solid block" data-act="shareDna" style="margin-top:12px">${I.dl}存成圖片分享</button></main>${nav('home')}`;
@@ -371,6 +374,9 @@ function viewSettings() {
   const p = S.settings.provider;
   return `<main class="screen"><button class="back" data-act="back">${I.back}返回</button><h1 class="serif" style="margin:6px 0 18px;font-size:32px">設定</h1>
   <p class="sec">解說用的 AI</p>${aiSetupHtml('settings')}
+  <div class="card" style="margin-top:14px;background:var(--sage)"><strong>自動備援</strong><p class="small" style="margin:4px 0 8px">兩把以上的金鑰都設定好，主要的 AI 忙碌、太慢或連不上時，會自動改用另一個，不用自己切換。</p>
+  <div class="row wrap">${Object.entries(AI.PROVIDERS).map(([k, v]) => `<span class="chip" style="background:var(--card)">${v.name}：${(S.settings.keys || {})[k] ? (k === S.settings.provider ? '主要' : '備用') : '未設定'}</span>`).join('')}</div>
+  <p class="muted tiny" style="margin:8px 0 0">想加備用的 AI：點上面的名稱切換過去，貼上金鑰測試後，再點回你想當主要的那個。</p></div>
   <details style="margin-top:12px"><summary class="small" style="min-height:44px;display:flex;align-items:center;cursor:pointer">進階：模型名稱</summary><label class="lab" for="modelIn">${AI.PROVIDERS[p].name} 模型（看不懂可以不用改）</label><div class="row"><input id="modelIn" class="field" value="${esc((S.settings.models || {})[p] || AI.PROVIDERS[p].model)}"><button class="btn" data-act="saveModel">存</button></div></details>
   <p class="sec" style="margin-top:26px">解說長度</p><div class="row">${[['short', '簡短'], ['deep', '深入']].map(([k, l]) => `<button class="opt ${S.settings.length === k ? 'on' : ''}" data-act="length" data-v="${k}">${l}</button>`).join('')}</div>
   <p class="sec" style="margin-top:26px">備份</p><p class="small" style="margin:0 0 10px">照片和資料只存在這支手機的瀏覽器裡。換手機或清除 Safari 資料前，記得先匯出備份。建議每天看完展匯出一次。</p>
@@ -422,9 +428,9 @@ async function reverseCity(loc) {
   if (GEO.has(k)) return GEO.get(k);
   try {
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 6000);
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=zh-TW&lat=${loc.lat}&lon=${loc.lng}`, { signal: ctl.signal });
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=zh-Hant-TW,zh-TW;q=0.9,en;q=0.6&lat=${loc.lat}&lon=${loc.lng}`, { signal: ctl.signal });
     clearTimeout(t); const j = await r.json(); const a = j.address || {};
-    const out = { city: a.city || a.town || a.village || a.municipality || a.county || a.state || null, country: a.country || null };
+    const out = { city: ZH.tw(a.city || a.town || a.village || a.municipality || a.county || a.state || null), country: ZH.tw(a.country || null) };
     GEO.set(k, out); return out;
   } catch (e) { return null; }
 }
@@ -452,7 +458,7 @@ function applyAI(w, r, opts = {}) {
     title: keep(w.title, r.title), titleOriginal: keep(w.titleOriginal, r.titleOriginal), artist: keep(w.artist, r.artist), artistOriginal: keep(w.artistOriginal, r.artistOriginal),
     year: keep(w.year, r.year), medium: keep(w.medium, r.medium), short: keep(w.short, r.short), long: keep(w.long, r.long), labelText: keep(w.labelText, r.labelText),
     confidence: r.confidence || w.confidence || 'medium', isCopy: !!r.isCopy, dims: r.dims || w.dims, subjects: (r.subjects && r.subjects.length) ? r.subjects : (w.subjects || []),
-    kind: r.isStreet ? 'street' : 'artwork', aiProvider: S.settings.provider, status: 'ready', error: ''
+    kind: r.isStreet ? 'street' : 'artwork', aiProvider: AI.state.lastProvider || S.settings.provider, status: 'ready', error: ''
   });
   if (opts.fromLabel) { w.labelUsed = true; if (w.confidence === 'low') w.confidence = 'high'; }
 }
@@ -587,6 +593,7 @@ async function retryPending() {
 }
 
 /* ---------- 錄音 ---------- */
+const canTranscribe = () => !!(S.settings.keys || {}).gemini;
 async function startRec(workId) {
   if (!workId) { toast('先拍一件作品，感想會存到那件作品裡。'); return; }
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast('這個瀏覽器不支援錄音，可以改用寫的。'); return; }
@@ -604,9 +611,9 @@ async function finishRec(workId, blob, stream) {
   stream.getTracks().forEach(t => t.stop());
   const dur = Math.round((Date.now() - S.rec.start) / 1000); S.rec = null;
   const w = workOf(workId); if (!w) return render();
-  const t = { id: uid(), at: Date.now(), kind: 'voice', audio: blob, dur, text: AI.PROVIDERS[S.settings.provider].audio ? '轉成文字中…' : `（語音 ${dur} 秒）` };
+  const t = { id: uid(), at: Date.now(), kind: 'voice', audio: blob, dur, text: canTranscribe() ? '轉成文字中…' : `（語音 ${dur} 秒）` };
   w.thoughts = [t, ...(w.thoughts || [])]; await saveWork(w); render();
-  if (AI.PROVIDERS[S.settings.provider].audio) {
+  if (canTranscribe()) {
     try { const text = await AI.transcribe(S.settings, { audioB64: await blobToBase64(blob), audioMime: blob.type.split(';')[0], workTitle: w.title }); t.text = String(text).trim(); toast(`感想已存到《${w.title}》`); }
     catch (e) { t.text = `（語音 ${dur} 秒，之後可以重新轉文字）`; toast(e.message); }
     await saveWork(w); render();
@@ -699,7 +706,7 @@ const ACT = {
   fav: async () => { const w = workOf(S.route.p.id); w.fav = !w.fav; await saveWork(w); render(); },
   showLong: () => { S.ui.showLong = !S.ui.showLong; render(); },
   editInfo: () => { S.ui.editInfo = !S.ui.editInfo; render(); },
-  saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, artist: $('#eiA').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); if (w.status === 'pending' && w.title !== '待辨識的作品') w.status = 'ready'; S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
+  saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, titleOriginal: $('#eiTo').value.trim(), artist: $('#eiA').value.trim(), artistOriginal: $('#eiAo').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); if (w.status === 'pending' && w.title !== '待辨識的作品') w.status = 'ready'; S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
   reanalyze: () => { const w = workOf(S.route.p.id); if (!w) return; if (w.queued && w.status === 'pending') { w.hold = false; toast('排進辨識佇列了。'); runQueue(); return; } if (!S.ui.busy[w.id]) reanalyze(w, w.status === 'pending'); },
   retryAll: () => retryPending(),
   artistDna: async () => {
@@ -792,6 +799,13 @@ async function loadAll() {
   S.settings = { ...DEFAULTS, ...(await DB.getKV('settings', {})) };
   S.settings.keys = S.settings.keys || {}; S.settings.models = S.settings.models || {};
   [S.works, S.places, S.photos] = await Promise.all([DB.all('works'), DB.all('places'), DB.all('photos')]);
+  // 把舊資料裡的簡體字、中國大陸譯名改成台灣用法
+  for (const [store, arr] of [['places', S.places], ['works', S.works]]) {
+    for (let i = 0; i < arr.length; i++) {
+      const { thoughts, ...rest } = arr[i]; const fixed = { ...ZH.deep(rest), thoughts };
+      if (JSON.stringify(rest) !== JSON.stringify(ZH.deep(rest))) { arr[i] = fixed; await DB.put(store, fixed); }
+    }
+  }
   S.session = await DB.getKV('session', null); S.dna = await DB.getKV('dna', null); S.artist = await DB.getKV('artist', {}) || {};
   const av = await DB.getKV('avatar', null); if (av) { if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(av); }
   URLS.forEach(u => URL.revokeObjectURL(u)); URLS.clear();

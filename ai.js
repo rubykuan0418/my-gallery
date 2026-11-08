@@ -45,8 +45,28 @@ const AI = (() => {
     catch (e) { if (e.code === 'timeout') throw e; const err = new Error('連不上 AI 服務（Load failed）。請確認網路正常；如果一直出現，可以到設定改用其他 AI。'); err.code = 'network'; throw err; }
   }
 
-  async function call(settings, { system, text, imageB64, audioB64, audioMime, json = true, maxTokens = 1800 }) {
-    const p = settings.provider || 'gemini';
+  /* 主要的 AI 卡住（忙碌、太慢、連不上、額度用完）時，自動改用另一把已設定的金鑰 */
+  const state = { lastProvider: null };
+  async function call(settings, opts) {
+    const main = settings.provider || 'gemini';
+    const keys = settings.keys || {};
+    let order = [main, ...Object.keys(PROVIDERS).filter(k => k !== main && keys[k])];
+    if (opts.audioB64) order = order.filter(k => PROVIDERS[k].audio && keys[k]);
+    if (opts.noFallback) order = [main];
+    if (!order.length) { const e = new Error(opts.audioB64 ? '語音轉文字需要 Gemini 金鑰' : '還沒有設定 AI 金鑰'); e.code = 'nokey'; throw e; }
+    let lastErr;
+    for (let i = 0; i < order.length; i++) {
+      try { const r = await callOne(settings, order[i], { ...opts, hasBackup: i < order.length - 1 }); state.lastProvider = order[i]; return ZH.deep(r); }
+      catch (e) {
+        lastErr = e;
+        const switchable = e.code === 'timeout' || e.code === 'network' || e.status === 429 || e.status >= 500 || e.status === 401 || e.status === 403;
+        if (!switchable || e.code === 'offline') throw e;
+      }
+    }
+    throw lastErr;
+  }
+
+  async function callOne(settings, p, { system, text, imageB64, audioB64, audioMime, json = true, maxTokens = 1800, hasBackup = false }) {
     const key = (settings.keys || {})[p];
     if (!key) { const e = new Error('還沒有設定 AI 金鑰'); e.code = 'nokey'; throw e; }
     if (!navigator.onLine) { const e = new Error('目前沒有網路'); e.code = 'offline'; throw e; }
@@ -59,7 +79,7 @@ const AI = (() => {
       parts.push({ text });
       const payload = JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.4, maxOutputTokens: Math.max(maxTokens * 3, 4096), ...(json ? { responseMimeType: 'application/json' } : {}) } });
       // 模型忙碌（503/500/429）時，稍等再試，並自動換備用模型
-      const models = [...new Set([model, ...GEMINI_FALLBACK])];
+      const models = [...new Set([model, ...GEMINI_FALLBACK])].slice(0, hasBackup ? 2 : 4); // 有備用 AI 時，少試幾次就換過去
       for (let i = 0; i < models.length; i++) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models[i])}:generateContent`;
         // 先用「簡單請求」（不帶自訂標頭，Safari 比較不會擋），失敗再改用標頭帶金鑰
@@ -106,7 +126,7 @@ const AI = (() => {
     return json ? parseJSON(t) : t;
   }
 
-  const SYS = '你是一位溫暖、知識豐富的美術館導覽員與藝術史研究者。一律使用台灣繁體中文回答，語氣溫和、不說教。不確定的事情絕對不要編造。';
+  const SYS = '你是一位溫暖、知識豐富的美術館導覽員與藝術史研究者。一律使用台灣繁體中文與台灣慣用譯名回答（例如：佛羅倫斯、達文西、波提且利、梵谷、林布蘭、維梅爾、杜勒、德勒斯登、義大利、美術館），絕對不要使用簡體字或中國大陸的譯名與用語。語氣溫和、不說教。不確定的事情絕對不要編造。';
 
   function analyzePhoto(settings, { imageB64, takenAt, placeHint, cityHint, candidates }) {
     const len = settings.length === 'deep' ? '5 到 7 句' : '2 到 3 句';
@@ -123,12 +143,12 @@ ${list}
  "sameWorkId": 如果這張拍的是上面清單裡的某一件（包含它的細節、說明牌、或人和它的合照），填那件的 id；否則 null,
  "isStreet": 如果是街頭、戶外、建築、店家或不在美術館展出的東西，填 true,
  "museum": 照片所在美術館或博物館的繁體中文名稱，不確定填 null,
- "museumOriginal": 美術館原文名稱或 null,
+ "museumOriginal": 美術館的原文名稱（例如 Galleria degli Uffizi、Alte Pinakothek）或 null,
  "city": 城市的繁體中文名稱或 null,
  "title": 作品繁體中文名稱。認不出名作時，用描述性的名稱，例如「街角的藍色彩繪磁磚」,
- "titleOriginal": 原文名稱或 null,
+ "titleOriginal": 作品的原文名稱（例如義大利文、德文、法文原名；不確定原文時用通用的英文名稱）。描述性名稱的街頭物件填 null,
  "artist": 藝術家繁體中文譯名，不知道填 null,
- "artistOriginal": 藝術家原文名或 null,
+ "artistOriginal": 藝術家的原文全名（例如 Sandro Botticelli、Albrecht Dürer）；不知道作者填 null,
  "year": 年代（例如「約 1470」），不知道填 null,
  "medium": 媒材，不知道填 null,
  "confidence": "high" | "medium" | "low"（對作品身分的把握）,
@@ -165,16 +185,16 @@ ${prevNames && prevNames.length ? '請不要再用這些名稱：' + prevNames.j
 {"name":"8 到 12 個字的美感名稱","tags":["三個英文標籤"],"oneLiner":"一句話說明她被什麼吸引",
 "curatorTitle":"策展人筆記的標題，一句話","curatorNote":"2 到 3 句，引用她收藏裡的具體作品當例子",
 "dims":{"brightness":"例如 偏沉穩","warmth":"","line":"","form":"","mood":"","ornament":""},
-"closest":[{"artist":"她收藏裡最像她的藝術家","why":"一句話"} 最多3位],
+"closest":[{"artist":"她收藏裡最像她的藝術家(繁中)","artistOriginal":"原文名字","why":"一句話"} 最多3位],
 "recs":[{"artist":"她還沒收藏、可能會喜歡的藝術家(繁中)","artistOriginal":"原文","why":"一句話為什麼推薦","where":"在哪個美術館看得到"} 3位],
 "surprise":{"title":"收藏裡最不像她的一件作品名稱","text":"一句溫暖的話"}}`;
     return call(settings, { system: SYS, text, maxTokens: 1500 });
   }
 
   async function testKey(settings) {
-    const r = await call(settings, { system: '你是測試助手。', text: '請回傳 JSON：{"ok":true}', maxTokens: 50 });
+    const r = await call(settings, { system: '你是測試助手。', text: '請回傳 JSON：{"ok":true}', maxTokens: 50, noFallback: true });
     return !!r;
   }
 
-  return { PROVIDERS, analyzePhoto, transcribe, artistDna, aestheticDna, testKey };
+  return { PROVIDERS, state, analyzePhoto, transcribe, artistDna, aestheticDna, testKey };
 })();
