@@ -2,12 +2,12 @@
 /* AI：每個人用自己的金鑰，直接從手機呼叫，金鑰只存在這支手機裡。 */
 const AI = (() => {
   const PROVIDERS = {
-    gemini: { name: 'Gemini', model: 'gemini-flash-latest', keyHint: 'AQ. 或 AIza 開頭', audio: true },
+    gemini: { name: 'Gemini', model: 'gemini-2.5-flash', keyHint: 'AQ. 或 AIza 開頭', audio: true },
     claude: { name: 'Claude', model: 'claude-sonnet-4-5', keyHint: 'sk-ant- 開頭', audio: false },
     openai: { name: 'ChatGPT', model: 'gpt-4o-mini', keyHint: 'sk- 開頭', audio: false }
   };
 
-  const GEMINI_FALLBACK = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+  const GEMINI_FALLBACK = ['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
 
   function parseJSON(text) {
     if (!text) throw new Error('AI 沒有回覆內容');
@@ -33,9 +33,16 @@ const AI = (() => {
     return friendlyError(status, body) + `（代碼 ${status}${msg ? '・' + String(msg).slice(0, 80) : ''}）`;
   }
 
+  // 每次呼叫最多等 45 秒，超過就先跳過，之後再試
+  async function tFetch(url, opts, ms = 45000) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+    try { return await fetch(url, { ...opts, signal: ctl.signal }); }
+    catch (e) { if (e.name === 'AbortError') { const err = new Error('AI 回應太久，先跳過這張，稍後會再自動試一次。'); err.code = 'timeout'; throw err; } throw e; }
+    finally { clearTimeout(t); }
+  }
   async function netFetch(url, opts) {
-    try { return await fetch(url, opts); }
-    catch (e) { const err = new Error('連不上 AI 服務（Load failed）。請確認網路正常；如果一直出現，可以到設定改用其他 AI。'); err.code = 'network'; throw err; }
+    try { return await tFetch(url, opts); }
+    catch (e) { if (e.code === 'timeout') throw e; const err = new Error('連不上 AI 服務（Load failed）。請確認網路正常；如果一直出現，可以到設定改用其他 AI。'); err.code = 'network'; throw err; }
   }
 
   async function call(settings, { system, text, imageB64, audioB64, audioMime, json = true, maxTokens = 1800 }) {
@@ -56,8 +63,11 @@ const AI = (() => {
       for (let i = 0; i < models.length; i++) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models[i])}:generateContent`;
         // 先用「簡單請求」（不帶自訂標頭，Safari 比較不會擋），失敗再改用標頭帶金鑰
-        try { res = await fetch(url + '?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: payload }); }
-        catch (e1) { res = await netFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: payload }); }
+        try { res = await tFetch(url + '?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: payload }); }
+        catch (e1) {
+          if (e1.code === 'timeout') { if (i === models.length - 1) throw e1; continue; }
+          res = await netFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: payload });
+        }
         body = await res.json().catch(() => ({}));
         if (res.ok) break;
         const busy = res.status >= 500 || res.status === 429 || res.status === 404;

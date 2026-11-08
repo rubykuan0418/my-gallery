@@ -121,7 +121,8 @@ function viewHome() {
   h += `${I.flourish}<p class="muted small" style="margin:0">${n} 件作品・${np} 個地點</p></div>
   <button class="hit" data-act="go" data-to="dna" aria-label="我的美感 DNA" style="width:auto;display:flex;flex-direction:column;align-items:center;gap:2px">${avatarHtml(54)}<span class="tiny" style="color:var(--primary);font-weight:700">我的美感</span></button></div>`;
   if (todayVisit) h += `<button class="hit row" data-act="openCamera" style="margin-top:18px;background:var(--sage);border-radius:26px 14px 30px 12px;padding:14px 16px;gap:12px">${I.star('#4F6652', 22)}<span class="grow" style="line-height:1.5"><strong>今天在${esc(todayVisit.name)}</strong><br><span class="muted small">回到相機，繼續記錄</span></span>${I.next}</button>`;
-  if (pending) h += `<div class="card row" style="margin-top:12px;background:var(--butter)"><span class="grow small">有 ${pending} 件作品還沒辨識（可能是沒網路或沒設定金鑰）。</span><button class="btn white" data-act="retryAll">${S.ui.busy.retry ? '<span class="spin"></span>' : '再試一次'}</button></div>`;
+  if (QRUN || S.queue.length) h += `<div class="card row" role="status" style="margin-top:12px;background:var(--sky)"><span class="spin" style="flex:none"></span><span class="grow small" style="line-height:1.5"><strong>正在辨識照片・還有 ${pending + S.queue.length} 張</strong><br>可以先去看別的；關掉 app 也不會遺失，下次打開會接著辨識。</span></div>`;
+  else if (pending) { const ew = S.works.find(w => w.status === 'pending' && w.error); h += `<div class="card row" style="margin-top:12px;background:var(--butter)"><span class="grow small" style="line-height:1.5">有 ${pending} 張照片還沒辨識，照片都已經存好了。${ew ? '<br><span class="muted">' + esc(ew.error) + '</span>' : ''}</span><button class="btn white" data-act="retryAll">${S.ui.busy.retry ? '<span class="spin"></span>' : '再試一次'}</button></div>`; }
   if (!n && !np) {
     h += `<div class="empty">${I.blob('#F4E3DD', 120)}<h2 class="serif" style="font-size:26px;margin:8px 0">你的畫廊還是空的</h2><p class="muted">在美術館、或在路上看到喜歡的東西，打開相機拍下來就好。今天的畫廊會自己慢慢長出來。</p>
     <div class="row wrap" style="margin-top:16px"><button class="btn solid" data-act="openCamera">${I.cam}打開相機</button><button class="btn" data-act="pickLib">${I.img}匯入以前的照片</button></div></div></main>${nav('home')}`;
@@ -147,7 +148,7 @@ function viewHome() {
     let ws = [...S.works].sort((a, b) => lastAt(b) - lastAt(a));
     if (S.ui.favOnly) ws = ws.filter(w => w.fav);
     h += `<div class="row" style="justify-content:space-between;margin:18px 0 14px"><span class="muted small">${S.ui.favOnly ? '最喜歡的作品' : `全部 ${S.works.length} 件・最近的在上面`}</span><button class="opt ${S.ui.favOnly ? 'on' : ''}" aria-pressed="${S.ui.favOnly}" data-act="favOnly">只看最喜歡</button></div><div class="grid2">`;
-    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? '<span class="badge">待辨識</span>' : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}</strong><span class="muted small" style="position:relative">${esc(w.artist || '作者不明')}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
+    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}</strong><span class="muted small" style="position:relative">${esc(w.artist || '作者不明')}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
     h += `</div>`;
   } else {
     h += `<div style="border-left:1px solid var(--gold);margin:26px 0 0 8px">`;
@@ -189,7 +190,7 @@ function viewWork() {
   ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(p.type)}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
   <div class="row" style="margin-top:10px;overflow-x:auto;padding-bottom:2px">${ps.map((x, i) => `<button class="hit" style="width:auto;flex:none" data-act="photoIdx" data-i="${i}" aria-label="看第 ${i + 1} 張：${esc(x.type)}"><img src="${purl(x)}" alt="" style="width:50px;height:50px;object-fit:cover;display:block;border:3px solid ${i === idx ? 'var(--accent)' : 'var(--card)'};border-radius:12px 8px 14px 6px"></button>`).join('')}</div>
   <button class="btn white" data-act="sheet" data-v="menu" style="margin-top:8px;font-size:14px">${I.sort}這張放錯了？整理這張照片</button>`;
-  if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>這件還沒辨識</strong><p style="margin:4px 0 10px" class="small">${esc(w.error || '有網路、設定好金鑰後就能辨識。')}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
+  if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
   h += `<div style="margin-top:20px">${w.isCopy ? '<span class="chip">複製品・不算進美感 DNA</span> ' : ''}${w.kind === 'street' ? '<span class="chip" style="background:var(--sage)">路上的小美好</span>' : ''}`;
   if (S.ui.editInfo) {
     h += `<div class="card" style="margin-top:10px">${[['eiT', '作品名稱', w.title], ['eiA', '藝術家', w.artist], ['eiY', '年代', w.year], ['eiM', '媒材', w.medium]].map(([id, l, v]) => `<label class="lab" for="${id}">${l}</label><input id="${id}" class="field" value="${esc(v || '')}" style="margin-bottom:10px">`).join('')}<p class="muted tiny" style="margin:0 0 10px">存下來後，可以按「依新資料重寫解說」讓 AI 重新整理。</p><div class="row"><button class="btn grow" data-act="editInfo">取消</button><button class="btn solid grow" data-act="saveInfo">存下來</button></div></div>`;
@@ -253,7 +254,8 @@ function viewCamera() {
   const todays = pl ? visitsOf(pl.id).find(v => v.date === ymd(Date.now())) : null;
   let h = `<main class="cam"><div class="row" style="justify-content:space-between;align-items:flex-start"><span class="pill">${pl ? `你在<strong>${esc(pl.name)}</strong><br><span class="muted tiny">今天的畫廊已開始・${todays ? todays.works.length : 0} 件</span>` : '拍下第一張，<br><span class="muted tiny">AI 會判斷你在哪裡</span>'}</span>
   <button class="btn white" data-act="endVisit" style="font-weight:700;color:var(--ink)">結束</button></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:16px 0">`;
-  S.queue.forEach(q => { h += `<div class="pill row" role="status">${q.thumb ? `<img src="${q.thumb}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px">` : ''}<span class="spin"></span><span>${q.status === 'ai' ? '辨識中…' : '處理照片中…'}</span></div>`; });
+  const nq = queuedWorks().length + S.queue.length; const cw = S.working && workOf(S.working); const cp = cw && mainPhoto(cw);
+  if (nq) h += `<div class="pill row" role="status">${cp ? `<img src="${purl(cp)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px">` : ''}<span class="spin"></span><span class="grow" style="line-height:1.4">${QRUN ? '辨識中' : '已存好，等待辨識'}・還有 ${nq} 張<br><span class="muted tiny">照片已經存好，可以繼續拍或關閉相機</span></span></div>`;
   const L = S.last; const lw = L && workOf(L.workId);
   if (L && L.facade) h += `<div class="pill">已存成這個地點的封面照片。</div>`;
   else if (lw && L.grouped) h += `<div class="pill" role="status" style="background:var(--sage)">已收在一起（${photosOf(lw.id).length} 張）・《${esc(lw.title)}》</div>`;
@@ -269,7 +271,7 @@ function viewCamera() {
   <label for="camInput" class="shutter" role="button" aria-label="拍照"><span>${I.star('#EBCF8A', 30)}</span></label>
   <button class="round" data-act="${S.rec ? 'stopRec' : 'startRec'}" aria-label="${S.rec ? '結束錄音' : '錄下感想'}" style="${S.rec ? 'background:var(--pink);color:var(--accent)' : ''}">${I.mic}</button></div>
   <p class="tiny" style="text-align:center;margin:10px 0 0;opacity:.85">拍照後會自動辨識、自動收進今天的畫廊${S.last && S.last.workId ? '；麥克風會把感想存到最新的作品' : ''}</p>
-  <button class="btn ghost" data-act="tab" data-to="home" style="color:#FBF7EF;margin:6px auto 0">${I.x}關閉相機</button></main>`;
+  <button class="btn ghost" data-act="tab" data-to="home" style="color:#FBF7EF;margin:6px auto 0">${I.x}關閉相機${nq ? '（辨識會在背景繼續）' : ''}</button></main>`;
   return h;
 }
 
@@ -456,26 +458,57 @@ function applyAI(w, r, opts = {}) {
 }
 function candidatesFor(placeId) { return placeId ? worksAt(placeId).filter(w => w.status === 'ready').sort((a, b) => lastAt(b) - lastAt(a)).slice(0, 40).map(w => ({ id: w.id, title: w.title + (w.titleOriginal ? ' / ' + w.titleOriginal : ''), artist: w.artist })) : []; }
 
+/* 照片先存起來（很快），辨識交給背景佇列：離開相機、關掉 app 都不會遺失 */
 async function processFile(file, fromCamera) {
-  const q = { id: uid(), status: 'prep', thumb: null }; S.queue.push(q); if (S.route.name === 'camera') render();
+  const q = { id: uid(), status: 'prep', thumb: null }; S.queue.push(q); render();
   try {
     const exif = await readExif(file);
     const prep = await prepareImage(file);
-    q.thumb = URL.createObjectURL(prep.thumb);
     const takenAt = exif.time || (fromCamera ? Date.now() : (file.lastModified || Date.now()));
     const loc = exif.lat != null ? { lat: exif.lat, lng: exif.lng } : (fromCamera ? await getLocation() : null);
-    const photo = { id: uid(), workId: null, placeId: null, type: '作品', blob: prep.full, thumb: prep.thumb, w: prep.w, h: prep.h, takenAt, lat: loc ? loc.lat : null, lng: loc ? loc.lng : null, createdAt: Date.now() };
+    const photo = { id: uid(), workId: null, placeId: null, type: '作品', blob: prep.full, thumb: prep.thumb, w: prep.w, h: prep.h, takenAt, lat: loc ? loc.lat : null, lng: loc ? loc.lng : null, createdAt: Date.now(), fromCamera: !!fromCamera };
     const sess = currentSession(takenAt, loc);
-    const geo = await reverseCity(loc);
-    q.status = 'ai'; if (S.route.name === 'camera') render();
-    let r = null, err = null;
-    try { r = await AI.analyzePhoto(S.settings, { imageB64: prep.aiData, takenAt, placeHint: sess ? placeOf(sess.placeId).name : null, cityHint: geo && geo.city, candidates: candidatesFor(sess && sess.placeId) }); }
-    catch (e) { err = e; }
-    await integrate(photo, r, { sess, loc, geo, takenAt, err });
+    const w = { id: uid(), placeId: sess ? sess.placeId : null, title: '辨識中的作品', status: 'pending', queued: true, thoughts: [], fav: false, createdAt: Date.now() };
+    S.works.push(w); await saveWork(w);
+    photo.workId = w.id; S.photos.push(photo); await savePhoto(photo);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  } catch (e) { toast('這張照片處理失敗：' + e.message); }
+  } catch (e) { toast('這張照片打不開：' + e.message); }
   S.queue = S.queue.filter(x => x !== q);
   render();
+}
+let QRUN = false, QTIMER = null;
+const queuedWorks = () => S.works.filter(w => w.status === 'pending' && w.queued);
+async function runQueue() {
+  if (QRUN) return; QRUN = true; clearTimeout(QTIMER);
+  try {
+    while (true) {
+      const list = queuedWorks().filter(w => !w.hold).map(w => ({ w, p: photosOf(w.id)[0] })).filter(x => x.p).sort((a, b) => a.p.takenAt - b.p.takenAt);
+      if (!list.length) break;
+      const { w, p } = list[0]; S.working = w.id; render();
+      const loc = p.lat != null ? { lat: p.lat, lng: p.lng } : null;
+      const sess = currentSession(p.takenAt, loc);
+      const geo = await reverseCity(loc);
+      let r = null, err = null;
+      try { const prep = await prepareImage(p.blob); r = await AI.analyzePhoto(S.settings, { imageB64: prep.aiData, takenAt: p.takenAt, placeHint: sess ? placeOf(sess.placeId).name : null, cityHint: geo && geo.city, candidates: candidatesFor(sess && sess.placeId) }); }
+      catch (e) { err = e; }
+      if (!r) {
+        w.error = err.message; w.attempts = (w.attempts || 0) + 1; await saveWork(w);
+        const stopAll = ['nokey', 'offline', 'network'].includes(err.code);
+        const later = err.code === 'timeout' || err.status === 429 || err.status >= 500;
+        if (stopAll) { if (err.code === 'nokey') toast('還沒設定 AI 金鑰，照片都先存起來了。到設定貼上金鑰就會開始辨識。', 5000); break; }
+        w.hold = true; // 先跳過這張，繼續下一張
+        if (later) { clearTimeout(QTIMER); QTIMER = setTimeout(() => { queuedWorks().forEach(x => { x.hold = false; }); runQueue(); }, 60000); }
+        continue;
+      }
+      // 辨識成功：拿掉暫時的作品，照片依 AI 結果收進正確的地點和作品
+      const prevLast = S.last;
+      S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id);
+      S.photos = S.photos.filter(x => x.id !== p.id); p.workId = null;
+      await integrate(p, r, { sess, loc, geo, takenAt: p.takenAt });
+      if (!p.fromCamera) S.last = prevLast;
+      if (S.route.name === 'work' && S.route.p.id === w.id && p.workId) { S.route = { name: 'work', p: { id: p.workId } }; }
+    }
+  } finally { QRUN = false; S.working = null; render(); }
 }
 async function integrate(photo, r, ctx) {
   const { sess, loc, geo, takenAt, err } = ctx;
@@ -519,12 +552,9 @@ async function integrate(photo, r, ctx) {
 }
 async function handleFiles(files, fromCamera) {
   const arr = [...files]; if (!arr.length) return;
-  if (!fromCamera && arr.length > 1) {
-    const withT = await Promise.all(arr.map(async f => ({ f, t: (await readExif(f)).time || f.lastModified || 0 })));
-    withT.sort((a, b) => a.t - b.t); arr.splice(0, arr.length, ...withT.map(x => x.f));
-    toast(`正在整理 ${arr.length} 張照片，會依拍攝時間自動分組。`, 4000);
-  }
+  if (!fromCamera) toast(arr.length > 1 ? `收到 ${arr.length} 張照片，正在背景辨識。可以先去看別的，關掉 app 也不會遺失。` : '收到照片，正在背景辨識。', 4500);
   for (const f of arr) await processFile(f, fromCamera);
+  runQueue();
 }
 async function reanalyze(w, useCandidates = false) {
   const ps = photosOf(w.id); if (!ps.length) return;
@@ -548,9 +578,11 @@ async function reanalyze(w, useCandidates = false) {
 }
 async function retryPending() {
   if (S.ui.busy.retry || !navigator.onLine || !(S.settings.keys || {})[S.settings.provider]) return;
-  const ps = S.works.filter(w => w.status === 'pending'); if (!ps.length) return;
+  queuedWorks().forEach(w => { w.hold = false; });
+  runQueue();
+  const old = S.works.filter(w => w.status === 'pending' && !w.queued); if (!old.length) return;
   S.ui.busy.retry = true; render();
-  for (const w of ps) await reanalyze(w, true);
+  for (const w of old) await reanalyze(w, true);
   delete S.ui.busy.retry; render();
 }
 
@@ -668,7 +700,7 @@ const ACT = {
   showLong: () => { S.ui.showLong = !S.ui.showLong; render(); },
   editInfo: () => { S.ui.editInfo = !S.ui.editInfo; render(); },
   saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, artist: $('#eiA').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); if (w.status === 'pending' && w.title !== '待辨識的作品') w.status = 'ready'; S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
-  reanalyze: () => { const w = workOf(S.route.p.id); if (w && !S.ui.busy[w.id]) reanalyze(w, w.status === 'pending'); },
+  reanalyze: () => { const w = workOf(S.route.p.id); if (!w) return; if (w.queued && w.status === 'pending') { w.hold = false; toast('排進辨識佇列了。'); runQueue(); return; } if (!S.ui.busy[w.id]) reanalyze(w, w.status === 'pending'); },
   retryAll: () => retryPending(),
   artistDna: async () => {
     const w = workOf(S.route.p.id); if (S.ui.busy.artist) return; S.ui.busy.artist = true; render();
@@ -723,7 +755,7 @@ const ACT = {
     const v = $('#keyIn').value.trim(); if (!v) { S.ui.obMsg = '請先貼上金鑰。'; render(); return; }
     S.settings.keys = { ...S.settings.keys, [S.settings.provider]: v }; await saveSettings();
     S.ui.busy.key = true; S.ui.obMsg = ''; render();
-    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; retryPending(); }
+    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; queuedWorks().forEach(w => { w.hold = false; }); retryPending(); }
     catch (e) { S.ui.obMsg = e.message; }
     delete S.ui.busy.key; render();
   },
@@ -744,8 +776,8 @@ document.addEventListener('click', e => {
   e.preventDefault(); fn(el.dataset, el, e);
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'nameIn') ACT.saveName(); });
-$('#camInput').addEventListener('change', e => { const f = e.target.files; if (S.route.name !== 'camera') tab('camera'); handleFiles(f, true).finally(() => { e.target.value = ''; }); });
-$('#libInput').addEventListener('change', e => { const f = e.target.files; if (S.route.name !== 'camera') tab('camera'); handleFiles(f, false).finally(() => { e.target.value = ''; }); });
+$('#camInput').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (S.route.name !== 'camera') tab('camera'); handleFiles(f, true); });
+$('#libInput').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (S.route.name === 'camera' || S.route.name !== 'home') tab('home'); S.ui.homeView = 'works'; handleFiles(f, false); });
 $('#addInput').addEventListener('change', async e => {
   const w = workOf(S.route.p.id); if (!w) return;
   for (const f of e.target.files) { const exif = await readExif(f); const prep = await prepareImage(f); const p = { id: uid(), workId: w.id, type: '細節', blob: prep.full, thumb: prep.thumb, w: prep.w, h: prep.h, takenAt: exif.time || f.lastModified || Date.now(), lat: exif.lat ?? null, lng: exif.lng ?? null, createdAt: Date.now() }; S.photos.push(p); await savePhoto(p); }
@@ -754,6 +786,7 @@ $('#addInput').addEventListener('change', async e => {
 $('#avatarInput').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; const prep = await prepareImage(f); await setAvatar(prep.thumb); e.target.value = ''; render(); });
 $('#importInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ''; });
 window.addEventListener('online', () => { setTimeout(retryPending, 1500); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(runQueue, 800); });
 
 async function loadAll() {
   S.settings = { ...DEFAULTS, ...(await DB.getKV('settings', {})) };
@@ -767,5 +800,5 @@ async function loadAll() {
   try { await loadAll(); } catch (e) { $('#app').innerHTML = '<p style="padding:30px">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式的 Safari 或 Chrome 打開。</p>'; return; }
   S.route = { name: 'home', p: {} }; render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  setTimeout(retryPending, 3000);
+  setTimeout(() => { runQueue(); retryPending(); }, 1500);
 })();
