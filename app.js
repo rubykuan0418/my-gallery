@@ -1,5 +1,5 @@
 'use strict';
-/* ============ 我的美術館 ============ */
+/* ============ My Gallery ============ */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -88,9 +88,14 @@ function mainPhotoAuto(w) { const all = photosOf(w.id); const ps = all.filter(p 
 const placeOf = id => S.places.find(p => p.id === id);
 const workOf = id => S.works.find(w => w.id === id);
 const worksAt = placeId => S.works.filter(w => w.placeId === placeId);
-function lastAt(w) { const ps = photosOf(w.id); return ps.length ? ps[ps.length - 1].takenAt : (w.createdAt || 0); }
+function lastAt(w) { const ps = photosOf(w.id); return ps.length ? Math.max(...ps.map(p => p.takenAt || 0)) : (w.createdAt || 0); }
 function seenDates(w) { return [...new Set(photosOf(w.id).map(p => ymd(p.takenAt)))].sort(); }
-function placeLast(pl) { let m = pl.createdAt || 0; worksAt(pl.id).forEach(w => { m = Math.max(m, lastAt(w)); }); return m; }
+function placeLast(pl) {
+  // 依照片實際拍攝時間排序（不是匯入的時間）
+  let m = 0; worksAt(pl.id).forEach(w => { photosOf(w.id).forEach(p => { m = Math.max(m, p.takenAt || 0); }); });
+  S.photos.forEach(p => { if (p.placeId === pl.id) m = Math.max(m, p.takenAt || 0); });
+  return m || pl.createdAt || 0;
+}
 function placeCover(pl) { const c = pl.coverPhotoId && S.photos.find(p => p.id === pl.coverPhotoId && !p.broken); if (c) return c; const ws = worksAt(pl.id).sort((a, b) => lastAt(b) - lastAt(a)); for (const w of ws) { const m = mainPhoto(w); if (m) return m; } return null; }
 function visitsOf(placeId) {
   const map = new Map();
@@ -133,7 +138,7 @@ function nav(active) {
   return `<nav class="nav" aria-label="主要導覽"><div class="nav-in">
   <button class="${active === 'home' ? 'on' : ''}" data-act="tab" data-to="home" ${active === 'home' ? 'aria-current="page"' : ''}>${I.grid}畫廊</button>
   <button class="shoot" data-act="openCamera" aria-label="拍照">${I.cam}</button>
-  <button class="${active === 'map' ? 'on' : ''}" data-act="tab" data-to="map" ${active === 'map' ? 'aria-current="page"' : ''}>${I.map}地圖</button>
+  <button class="${active === 'dna' ? 'on' : ''}" data-act="tab" data-to="dna" ${active === 'dna' ? 'aria-current="page"' : ''}><span class="navav">${avatarHtml(30)}</span>我的美感</button>
   </div></nav>`;
 }
 function avatarHtml(size) {
@@ -157,7 +162,7 @@ function viewHome() {
     h += `<h1 style="margin:0"><button class="hit row" data-act="editName" aria-label="修改名字" style="width:auto;min-height:44px;gap:6px"><span class="serif" style="font-size:32px;line-height:1.2">${esc(galleryTitle())}</span><span class="muted">${I.pen}</span></button></h1>`;
   }
   h += `${I.flourish}<p class="muted small" style="margin:0">${n} 件作品・${np} 個地點</p></div>
-  <button class="hit" data-act="go" data-to="dna" aria-label="我的美感 DNA" style="width:auto;display:flex;flex-direction:column;align-items:center;gap:2px">${avatarHtml(54)}<span class="tiny" style="color:var(--primary);font-weight:700">我的美感</span></button></div>`;
+  <button class="hit" data-act="tab" data-to="dna" aria-label="我的美感 DNA" style="width:auto;display:flex;flex-direction:column;align-items:center;gap:2px">${avatarHtml(54)}<span class="tiny" style="color:var(--primary);font-weight:700">我的美感</span></button></div>`;
   if (todayVisit) h += `<button class="hit row" data-act="openCamera" style="margin-top:18px;background:var(--sage);border-radius:26px 14px 30px 12px;padding:14px 16px;gap:12px">${I.star('#4F6652', 22)}<span class="grow" style="line-height:1.5"><strong>今天在${esc(todayVisit.name)}</strong><br><span class="muted small">回到相機，繼續記錄</span></span>${I.next}</button>`;
   const nBroken = S.photos.filter(p => p.broken).length;
   if (nBroken) h += `<div class="card" style="margin-top:12px;background:var(--pink)"><p class="small" style="margin:0 0 10px;line-height:1.6"><strong>有 ${nBroken} 張照片的檔案遺失了</strong><br>這是舊版在 iPhone 上存檔的問題，新版已經修好。手機相簿裡的原圖都還在，可以重新匯入。</p><button class="btn white" data-act="cleanBroken">清除遺失的照片</button></div>`;
@@ -168,7 +173,7 @@ function viewHome() {
     <div class="row wrap" style="margin-top:16px"><button class="btn solid" data-act="openCamera">${I.cam}打開相機</button><button class="btn" data-act="pickLib">${I.img}匯入以前的照片</button></div></div></main>${nav('home')}`;
     return h;
   }
-  h += `<div class="tabs" role="tablist" style="margin-top:22px">${[['place', '地點'], ['works', '作品'], ['time', '時間軸']].map(([k, l]) => `<button class="tab ${S.ui.homeView === k ? 'on' : ''}" role="tab" aria-selected="${S.ui.homeView === k}" data-act="homeView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  h += `<div class="tabs" role="tablist" style="margin-top:22px">${[['place', '地點'], ['works', '作品'], ['time', '時間軸'], ['map', '足跡']].map(([k, l]) => `<button class="tab ${S.ui.homeView === k ? 'on' : ''}" role="tab" aria-selected="${S.ui.homeView === k}" data-act="homeView" data-v="${k}">${l}</button>`).join('')}</div>`;
   if (S.ui.homeView === 'place') {
     const pls = [...S.places].sort((a, b) => placeLast(b) - placeLast(a));
     h += `<div style="display:flex;flex-direction:column;gap:34px;margin-top:30px">`;
@@ -190,6 +195,8 @@ function viewHome() {
     h += `<div class="row" style="justify-content:space-between;margin:18px 0 14px"><span class="muted small">${S.ui.favOnly ? '最喜歡的作品' : `全部 ${S.works.length} 件・最近的在上面`}</span><button class="opt ${S.ui.favOnly ? 'on' : ''}" aria-pressed="${S.ui.favOnly}" data-act="favOnly">只看最喜歡</button></div><div class="grid2">`;
     ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}${titleSub(w)}</strong><span class="muted small" style="position:relative">${artistHtml(w)}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
     h += `</div>`;
+  } else if (S.ui.homeView === 'map') {
+    h += footprintHtml();
   } else {
     h += `<div style="border-left:1px solid var(--gold);margin:26px 0 0 8px">`;
     allVisits().forEach((v, i) => {
@@ -274,7 +281,7 @@ function viewWork() {
 const ASPECT_BG = { '用色': 'var(--pink)', '線條': 'var(--sky)', '構圖': 'var(--butter)', '光線': 'var(--butter)', '筆觸': 'var(--sage)', '細節': 'var(--sky)', '材質': 'var(--sage)', '象徵': 'var(--pink)', '歷史背景': 'var(--sand)', '畫家心境': 'var(--pink)' };
 function lookForHtml(list, compact) {
   const items = compact ? list.slice(0, 2) : list;
-  return `<div style="margin-top:${compact ? 12 : 22}px;${compact ? '' : 'background:var(--card);border-radius:30px 16px 34px 14px;padding:16px 18px 6px'}"><p class="sec" style="margin:0 0 10px">${I.eye} 留心看這裡</p>${items.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px"><span class="chip" style="flex:none;background:${ASPECT_BG[x.aspect] || 'var(--sand)'};margin-top:1px">${esc(x.aspect || '細節')}</span><span style="line-height:1.65">${esc(x.text)}</span></div>`).join('')}</div>`;
+  return `<div style="margin-top:${compact ? 12 : 22}px;${compact ? '' : 'background:var(--card);border-radius:30px 16px 34px 14px;padding:16px 18px 6px'}"><p class="sec" style="margin:0 0 10px">${I.eye} 留心看這裡</p>${items.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px"><span class="chip" style="flex:none;min-width:68px;justify-content:center;text-align:center;background:${ASPECT_BG[x.aspect] || 'var(--sand)'};margin-top:1px">${esc(x.aspect || '細節')}</span><span style="line-height:1.65">${esc(x.text)}</span></div>`).join('')}</div>`;
 }
 function artistCard(ad, w) {
   return `<div style="margin-top:28px;background:var(--card);border-radius:36px 18px 40px 16px;overflow:hidden"><div style="background:var(--butter);padding:18px 20px 14px;position:relative;overflow:hidden"><div style="position:absolute;right:-8px;top:-12px">${I.blob('#EFD9A0', 76)}</div>
@@ -324,8 +331,10 @@ function viewCamera() {
   h += `</div>`;
   if (todays && todays.works.length) h += `<div class="strip" aria-label="今天的作品">${todays.works.map(w => { const m = mainPhoto(w); return m ? `<button class="hit t" data-act="go" data-to="work" data-id="${w.id}" aria-label="${esc(w.title)}"><img src="${purl(m)}" alt=""><span class="n">${photosOf(w.id).length}</span></button>` : ''; }).join('')}</div>`;
   h += `<div class="row" style="justify-content:space-around;margin-top:12px"><button class="round" data-act="pickLib" aria-label="從相簿選">${I.img}</button>
-  <label for="camInput" class="shutter" role="button" aria-label="拍照"><span>${I.star('#EBCF8A', 30)}</span></label>
+  ${CAM.live ? `<button class="shutter" data-act="snap" aria-label="拍照"><span>${I.star('#EBCF8A', 30)}</span></button>` : `<label for="camInput" class="shutter" role="button" aria-label="拍照"><span>${I.star('#EBCF8A', 30)}</span></label>`}
   <button class="round" data-act="${S.rec ? 'stopRec' : 'startRec'}" aria-label="${S.rec ? '結束錄音' : '錄下感想'}" style="${S.rec ? 'background:var(--pink);color:var(--accent)' : ''}">${I.mic}</button></div>
+  ${CAM.error ? `<p class="tiny" style="text-align:center;margin:10px 0 0;background:rgba(255,253,248,.14);border-radius:14px;padding:8px 10px">${esc(CAM.error)}</p>` : ''}
+  ${CAM.live ? `<button class="linkbtn" data-act="nativeCam" style="color:#FBF7EF;display:block;margin:6px auto 0;font-size:13px">改用 iPhone 內建相機拍（畫質較高）</button>` : ''}
   <p class="tiny" style="text-align:center;margin:10px 0 0;opacity:.85">拍照後會自動辨識、自動收進今天的畫廊${S.last && S.last.workId ? '；麥克風會把感想存到最新的作品' : ''}</p>
   <button class="btn ghost" data-act="tab" data-to="home" style="color:#FBF7EF;margin:6px auto 0">${I.x}關閉相機${nq ? '（辨識會在背景繼續）' : ''}</button></main>`;
   return h;
@@ -344,14 +353,15 @@ function viewSummary() {
   return h + `<p class="card" style="margin-top:22px;background:var(--sky)">回家想補可以補，不補也沒關係，今天的畫廊已經在這裡了。</p><button class="btn solid block" data-act="tab" data-to="home" style="margin-top:12px">回到畫廊</button></main>`;
 }
 
-function viewMap() {
+function footprintHtml() {
   const pls = [...S.places].sort((a, b) => placeLast(b) - placeLast(a));
   const cities = new Set(pls.map(p => p.city).filter(Boolean));
-  let h = `<main class="screen"><h1 class="serif" style="margin:0;font-size:32px">去過的地方</h1><p class="muted small" style="margin:2px 0 16px">${cities.size} 座城市・${pls.length} 個地點</p>`;
-  h += pls.some(p => p.lat != null) ? `<div id="map" role="region" aria-label="地圖"></div><p class="muted tiny" style="margin:6px 0 16px">地圖資料 © OpenStreetMap 貢獻者</p>` : `<div class="card" style="background:var(--sky)">拍照時允許「使用位置」，去過的地方就會出現在地圖上。</div>`;
-  h += `<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">${pls.map(pl => { const c = placeCover(pl); return `<button class="hit listrow" data-act="go" data-to="place" data-id="${pl.id}">${c ? `<img src="${purl(c)}" alt="">` : ''}<span class="grow" style="line-height:1.5"><strong>${esc(pl.name)}</strong><br><span class="muted small">${esc(pl.city || '')}・${worksAt(pl.id).length} 件</span></span>${I.next}</button>`; }).join('')}</div></main>${nav('map')}`;
+  let h = `<p class="muted small" style="margin:18px 0 12px">${cities.size} 座城市・${pls.length} 個地點</p>`;
+  h += pls.some(p => p.lat != null) ? `<div id="map" role="region" aria-label="足跡地圖"></div><p class="muted tiny" style="margin:6px 0 16px">地圖資料 © OpenStreetMap 貢獻者</p>` : `<div class="card" style="background:var(--sky)">拍照時允許「使用位置」，去過的地方就會出現在地圖上。</div>`;
+  h += `<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">${pls.map(pl => { const c = placeCover(pl); return `<button class="hit listrow" data-act="go" data-to="place" data-id="${pl.id}">${c ? `<img src="${purl(c)}" alt="">` : ''}<span class="grow" style="line-height:1.5"><strong>${esc(pl.name)}</strong><br><span class="muted small">${esc(pl.city || '')}・${worksAt(pl.id).length} 件</span></span>${I.next}</button>`; }).join('')}</div>`;
   return h;
 }
+function viewMap() { S.route = { name: 'home', p: {} }; S.ui.homeView = 'map'; return viewHome(); }
 let LEAFLET = null;
 function loadLeaflet() {
   if (LEAFLET) return LEAFLET;
@@ -378,16 +388,16 @@ async function initMap() {
 function viewDna() {
   const el = eligible(); const n = el.length; const D = S.dna;
   const meShots = S.photos.filter(p => p.type === '我與作品').slice(-6);
-  let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}我的畫廊</button><button class="ibtn" data-act="go" data-to="settings" aria-label="設定">${I.set}</button></div>
+  let h = `<main class="screen"><div class="topbar row" style="justify-content:flex-end"><button class="ibtn" data-act="go" data-to="settings" aria-label="設定">${I.set}</button></div>
   <div class="row" style="gap:16px;margin-top:6px">${avatarHtml(96)}<div class="grow"><p class="serif" style="margin:0;font-size:24px;line-height:1.3">${esc(S.settings.name || '我')}</p><p class="muted small" style="margin:0">${S.works.length} 件作品・${S.places.length} 個地點</p>
   <div class="row wrap" style="margin-top:8px"><button class="btn" data-act="pickAvatar" style="min-height:44px;font-size:14px">上傳照片</button>${meShots.length ? `<button class="btn" data-act="togglePick" style="min-height:44px;font-size:14px">從收藏挑</button>` : ''}</div></div></div>`;
   if (S.ui.pick) h += `<div class="card" style="margin-top:12px"><p style="margin:0 0 8px">選一張「我與作品」當大頭照</p><div class="row wrap">${meShots.map(p => `<button class="hit" style="width:auto" data-act="avatarFrom" data-id="${p.id}"><img class="avatar" src="${purl(p)}" alt="" style="width:72px;height:72px"></button>`).join('')}</div><p class="muted tiny" style="margin:8px 0 0">照片只存在你的手機裡。</p></div>`;
   h += `<h1 class="serif" style="margin:26px 0 0;font-size:30px">我的美感 DNA</h1>`;
   if (n < 5) {
-    return h + `<div class="card" style="margin-top:16px;background:var(--pink)"><h2 class="serif" style="margin:0;font-size:22px;line-height:1.35">再收藏 ${5 - n} 件作品，就能看到你的美感 DNA</h2><p class="muted" style="margin:6px 0 0">目前有 ${n} 件可以分析的作品。多拍幾件喜歡的作品，這一頁會慢慢長出你自己的樣子。</p></div></main>${nav('home')}`;
+    return h + `<div class="card" style="margin-top:16px;background:var(--pink)"><h2 class="serif" style="margin:0;font-size:22px;line-height:1.35">再收藏 ${5 - n} 件作品，就能看到你的美感 DNA</h2><p class="muted" style="margin:6px 0 0">目前有 ${n} 件可以分析的作品。多拍幾件喜歡的作品，這一頁會慢慢長出你自己的樣子。</p></div></main>${nav('dna')}`;
   }
   h += `<p class="muted small" style="margin:4px 0 0">AI 歸納・依 ${D ? D.basis : n} 件作品・會隨你的收藏慢慢改變</p>`;
-  if (!D) return h + `<button class="btn solid block" data-act="makeDna" style="margin-top:18px">${S.ui.busy.dna ? '<span class="spin"></span> 策展人正在看你的收藏…' : '請策展人整理我的美感'}</button></main>${nav('home')}`;
+  if (!D) return h + `<button class="btn solid block" data-act="makeDna" style="margin-top:18px">${S.ui.busy.dna ? '<span class="spin"></span> 策展人正在看你的收藏…' : '請策展人整理我的美感'}</button></main>${nav('dna')}`;
   const d = D.data;
   if (D.basis !== n) h += `<button class="btn white block" data-act="makeDna" style="margin-top:12px">${S.ui.busy.dna ? '<span class="spin"></span> 整理中…' : `收藏增加了（現在 ${n} 件），重新整理`}</button>`;
   h += `<div style="margin-top:18px;padding:24px 22px 22px;background:var(--pink);border-radius:46px 22px 52px 20px;position:relative;overflow:hidden"><div style="position:absolute;right:-30px;top:-16px;transform:rotate(18deg)">${I.leaf('#EBCDC2', 110)}</div>
@@ -403,7 +413,7 @@ function viewDna() {
   if ((d.closest || []).length) h += `<p class="sec" style="margin-top:28px">你收藏裡最像你的藝術家</p><div style="display:flex;flex-direction:column;gap:10px">${d.closest.map((a, i) => `<div class="card row" style="border-radius:${RAD[i]}"><span class="serif ring" style="width:42px;height:42px;background:${PASTEL[i]};font-size:20px;flex:none;border-radius:24px 16px 26px 14px">${i + 1}</span><span class="grow" style="line-height:1.5"><strong>${esc(a.artist)}</strong>${a.artistOriginal ? ` <span class="orig-i">${esc(a.artistOriginal)}</span>` : ''}<br><span class="muted small">${esc(a.why)}</span></span></div>`).join('')}</div>`;
   if ((d.recs || []).length) h += `<div style="margin:30px -22px 0;padding:26px 22px 28px;background:var(--sky);border-radius:48px 48px 0 0"><p class="sec" style="margin:0 0 4px">策展人推薦</p><h2 class="serif" style="margin:0 0 14px;font-size:24px;line-height:1.35">你可能也會喜歡，<br>但還沒認識的藝術家</h2><div style="display:flex;flex-direction:column;gap:12px">${d.recs.map((r, i) => `<div class="card" style="border-radius:${RAD[i]}"><strong style="font-size:18px">${esc(r.artist)}</strong> <span class="serif muted">${esc(r.artistOriginal || '')}</span><p style="margin:6px 0 0"><span class="muted">為什麼推薦：</span>${esc(r.why)}</p><p class="small row" style="margin:6px 0 0;align-items:flex-start;gap:6px">${I.pin}<span>${esc(r.where || '')}</span></p></div>`).join('')}</div></div>`;
   if (d.surprise && d.surprise.title) h += `<div class="card" style="margin-top:22px;background:var(--pink)"><p class="sec" style="margin:0">讓你意外的收藏</p><strong>${esc(d.surprise.title)}</strong><p style="margin:2px 0 0">${esc(d.surprise.text)}</p></div>`;
-  h += `<p class="muted small" style="margin-top:16px">在作品頁點「最喜歡」，策展人會更了解你。</p><button class="btn solid block" data-act="shareDna" style="margin-top:12px">${I.dl}存成圖片分享</button></main>${nav('home')}`;
+  h += `<p class="muted small" style="margin-top:16px">在作品頁點「最喜歡」，策展人會更了解你。</p><button class="btn solid block" data-act="shareDna" style="margin-top:12px">${I.dl}存成圖片分享</button></main>${nav('dna')}`;
   return h;
 }
 function dimWord(k, v) { const d = DIMS.find(x => x[0] === k); if (!d || v == null) return '—'; if (v < 1.8) return '很' + d[2]; if (v < 2.7) return '偏' + d[2]; if (v <= 3.3) return '介於兩者之間'; if (v <= 4.2) return '偏' + d[3]; return '很' + d[3]; }
@@ -442,7 +452,7 @@ function viewSettings() {
 function viewOnboarding() {
   const st = S.ui.ob;
   let h = `<main class="screen nonav" style="padding-top:calc(48px + var(--safe-t))"><div style="position:absolute;right:-10px;top:10px">${I.leaf('#EBCDC2', 100)}</div>`;
-  if (st === 0) h += `<p class="sec">歡迎</p><h1 class="serif" style="font-size:36px;line-height:1.2;margin:0">我的美術館</h1>${I.flourish}<p>把每次看展、路上遇見的美，自動整理成你自己的畫廊。</p>
+  if (st === 0) h += `<p class="sec">歡迎</p><h1 class="serif" style="font-size:36px;line-height:1.2;margin:0">My Gallery</h1>${I.flourish}<p>把每次看展、路上遇見的美，自動整理成你自己的畫廊。</p>
   <div style="display:flex;flex-direction:column;gap:10px;margin:18px 0">${[['在美術館或路上，拍下來就好', 'AI 會判斷作品、地點和日期，自動整理。'], ['邊看邊理解', '拍完立刻有簡短解說，想聽更多再點開。'], ['慢慢認識自己的美感', '收藏越多，策展人越懂你喜歡什麼。']].map(([a, b], i) => `<div class="card" style="background:${PASTEL[i]};border-radius:${RAD[i]}"><strong>${a}</strong><br><span class="small">${b}</span></div>`).join('')}</div>
   <p class="muted small">照片和資料只存在你的手機裡。</p><button class="btn solid block" data-act="ob" data-v="1">開始</button>`;
   if (st === 1) h += `<p class="sec">1 / 3</p><h1 class="serif" style="font-size:30px;margin:0 0 14px">怎麼稱呼你？</h1><label class="lab" for="obName">你的名字</label><input id="obName" class="field" maxlength="12" value="${esc(S.settings.name)}" placeholder="例如：Ruby"><p class="muted small">畫廊會叫做「名字的畫廊」，之後也可以改。</p><button class="btn solid block" data-act="obName" style="margin-top:12px">下一步</button>`;
@@ -458,12 +468,45 @@ const typing = () => { const a = document.activeElement; return !!(a && a.closes
 function bgRender() { if (typing()) { RENDER_WAIT = true; return; } render(); }
 document.addEventListener('focusout', () => { setTimeout(() => { if (RENDER_WAIT && !typing()) { RENDER_WAIT = false; render(); } }, 400); });
 const VIEWS = { home: viewHome, place: viewPlace, work: viewWork, camera: viewCamera, summary: viewSummary, map: viewMap, dna: viewDna, settings: viewSettings };
+/* 相機：在 app 裡直接顯示鏡頭畫面 */
+const CAM = { stream: null, live: false, error: '', starting: false };
+async function startCam() {
+  if (CAM.stream || CAM.starting) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { CAM.failed = true; CAM.error = '這個瀏覽器無法在 app 裡開鏡頭，按中間的按鈕會改用 iPhone 相機。'; render(); return; }
+  CAM.starting = true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+    if (S.route.name !== 'camera') { stream.getTracks().forEach(t => t.stop()); return; }
+    let v = $('#camVideo');
+    if (!v) { v = document.createElement('video'); v.id = 'camVideo'; v.setAttribute('playsinline', ''); v.muted = true; v.autoplay = true; document.body.prepend(v); }
+    v.srcObject = stream; await v.play().catch(() => {});
+    CAM.stream = stream; CAM.live = true; CAM.error = ''; document.body.classList.add('camlive');
+  } catch (e) {
+    CAM.live = false; CAM.failed = true;
+    CAM.error = e.name === 'NotAllowedError' ? '沒有相機權限。可以到 iPhone「設定 › Safari › 相機」改成「允許」；或直接按中間的按鈕，用 iPhone 相機拍。' : '鏡頭暫時打不開，按中間的按鈕會改用 iPhone 相機拍。';
+  }
+  CAM.starting = false; render();
+}
+function stopCam() {
+  if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+  CAM.stream = null; CAM.live = false; const v = $('#camVideo'); if (v) v.remove(); document.body.classList.remove('camlive');
+}
+async function snap() {
+  const v = $('#camVideo'); if (!v || !v.videoWidth) return;
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+  const fl = document.createElement('div'); fl.className = 'flash'; document.body.appendChild(fl); setTimeout(() => fl.remove(), 350);
+  if (navigator.vibrate) navigator.vibrate(20);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+  handleFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })], true);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopCam(); else if (S.route.name === 'camera') startCam(); });
 function render() {
   const app = $('#app');
+  if (S.route.name === 'camera' && S.settings.onboarded) { if (!CAM.failed) setTimeout(startCam, 0); } else { CAM.failed = false; CAM.error = ''; if (CAM.stream || $('#camVideo')) stopCam(); }
   app.innerHTML = !S.settings.onboarded ? viewOnboarding() : (VIEWS[S.route.name] || viewHome)();
   const rk = S.settings.onboarded ? S.route.name + (S.route.p.id || '') : 'ob' + S.ui.ob;
   if (rk !== render.last) { const sc = app.querySelector('.screen,.cam'); if (sc) sc.classList.add('enter'); render.last = rk; }
-  if (S.route.name === 'map' && S.settings.onboarded) initMap();
+  if (S.route.name === 'home' && S.ui.homeView === 'map' && S.settings.onboarded) initMap();
   if (S.route.name === 'settings') showStorage();
 }
 async function showStorage() {
@@ -728,7 +771,7 @@ async function shareDna() {
   g.font = '34px "Noto Sans TC", sans-serif'; g.fillStyle = '#6B5D55'; g.fillText((d.tags || []).join('  ·  '), 130, 560);
   g.fillStyle = '#3A2F2A'; g.font = '38px "Noto Sans TC", sans-serif'; wrap(g, d.oneLiner || '', 130, 640, 820, 58);
   (S.dna.palette || []).forEach((col, i) => { g.fillStyle = col; g.beginPath(); g.arc(190 + i * 175, 1050, 70, 0, Math.PI * 2); g.fill(); });
-  g.fillStyle = '#6B5D55'; g.font = '30px "Noto Sans TC", sans-serif'; g.fillText(`依 ${S.dna.basis} 件作品・我的美術館`, 130, 1240);
+  g.fillStyle = '#6B5D55'; g.font = '30px "Noto Sans TC", sans-serif'; g.fillText(`依 ${S.dna.basis} 件作品・My Gallery`, 130, 1240);
   const blob = await new Promise(r => c.toBlob(r, 'image/png')); const file = new File([blob], 'my-aesthetic-dna.png', { type: 'image/png' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: '我的美感 DNA' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   downloadBlob(blob, 'my-aesthetic-dna.png');
@@ -749,7 +792,7 @@ async function exportData() {
     const data = { app: 'my-gallery', version: 1, exportedAt: Date.now(), settings, places: S.places, works, photos, dna: S.dna, artist: S.artist, avatar: avatar ? await blobToBase64(avatar instanceof ArrayBuffer ? new Blob([avatar]) : avatar) : null };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const name = `my-gallery-backup-${ymd(Date.now())}.json`; const file = new File([blob], name, { type: 'application/json' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: '我的美術館備份' }); } catch (e) { if (e.name !== 'AbortError') downloadBlob(blob, name); } }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'My Gallery 備份' }); } catch (e) { if (e.name !== 'AbortError') downloadBlob(blob, name); } }
     else downloadBlob(blob, name);
     toast('備份檔已產生。建議存到「檔案」或雲端硬碟。（金鑰不會包含在備份裡）', 5000);
   } catch (e) { toast('匯出失敗：' + e.message); }
@@ -758,7 +801,7 @@ async function exportData() {
 async function importData(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (data.app !== 'my-gallery') throw new Error('這不是我的美術館的備份檔');
+    if (data.app !== 'my-gallery') throw new Error('這不是 My Gallery 的備份檔');
     if (!await ask(`要匯入 ${data.works.length} 件作品、${data.photos.length} 張照片嗎？相同的資料會被覆蓋，其他資料會保留。`)) return;
     for (const p of data.places) { await savePlace(p); }
     for (const p of data.photos) { await savePhoto({ ...p, blob: base64ToBlob(p.blob, 'image/jpeg'), thumb: base64ToBlob(p.thumb, 'image/jpeg') }); }
@@ -804,6 +847,8 @@ function openViewer(ps, start) {
   show();
 }
 const ACT = {
+  snap: () => snap(),
+  nativeCam: () => $('#camInput').click(),
   zoom: () => { const w = workOf(S.route.p.id); const ps = orderedPhotos(w); if (ps.length) openViewer(ps, Math.min(S.ui.photoIdx, ps.length - 1)); },
   tab: d => tab(d.to), go: d => go(d.to, { id: d.id }), back: () => back(),
   openCamera: () => { tab('camera'); },
