@@ -1,5 +1,5 @@
 // My Gallery service worker：讓 app 在沒有網路時也能打開
-const VERSION = 'mg-v19';
+const VERSION = 'mg-v20';
 const SHELL = ['./', 'index.html', 'style.css', 'db.js', 'zh.js', 'i18n.js', 'ai.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

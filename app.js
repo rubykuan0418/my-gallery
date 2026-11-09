@@ -1,6 +1,6 @@
 'use strict';
 /* ============ My Gallery ============ */
-const APP_VERSION = '2026.11.09-19';
+const APP_VERSION = '2026.11.09-20';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -27,6 +27,7 @@ const I = {
   sort: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h6M17 14l3 3-3 3"/></svg>',
   dl: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   refresh: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M20 4v5h-5M4 20v-5h5"/></svg>',
+  share: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M6 12v7h12v-7"/></svg>',
   zoom: '<svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20M10.5 7.5v6M7.5 10.5h6"/></svg>',
   trash: '<svg class="ic s" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
   eye: '<svg class="ic s" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -237,7 +238,7 @@ function viewWork() {
   const pl = placeOf(w.placeId); const dates = seenDates(w);
   const prov = AI.PROVIDERS[w.aiProvider || S.settings.provider] || AI.PROVIDERS.gemini;
   let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}${esc(pl ? pl.name : '返回')}</button>
-  <button class="ibtn heart ${w.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!w.fav}" aria-label="${w.fav ? '已加入最喜歡，點一下取消' : '加入最喜歡'}" style="${w.fav ? 'background:var(--pink)' : ''}">${I.heart}</button></div>
+  <span class="row" style="gap:6px"><button class="ibtn" data-act="shareWork" aria-label="分享這件作品">${I.share}</button><button class="ibtn heart ${w.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!w.fav}" aria-label="${w.fav ? '已加入最喜歡，點一下取消' : '加入最喜歡'}" style="${w.fav ? 'background:var(--pink)' : ''}">${I.heart}</button></span></div>
   <div style="position:relative;margin-top:8px"><div class="frame" style="padding:8px">${p ? `<button class="hit" data-act="zoom" aria-label="放大看照片" style="display:block;width:100%"><img src="${purl(p, 'full')}" alt="${esc(w.title)}, ${esc(L('type:' + p.type))}" style="${p.w && p.h ? `aspect-ratio:${p.w}/${p.h};` : ''}width:100%;height:auto;max-height:68vh;object-fit:contain;background:#EFE8DC"></button>` : ''}</div>
   ${p ? `<button class="ibtn" data-act="zoom" aria-label="放大看照片" style="position:absolute;right:16px;bottom:16px;background:rgba(255,253,248,.95)">${I.zoom}</button>` : ''}
   ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(L('type:' + p.type))}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
@@ -255,6 +256,19 @@ function viewWork() {
   }
   h += `<div class="metagrid">${[['年代', w.year], ['媒材', w.medium], ['地點', pl && pl.name], ['見過 ' + dates.length + ' 次', dates.map(d => d.replace(/-/g, '.')).join('、')]].map(([a, b]) => `<div><span class="muted tiny">${a}</span><br>${esc(b || '—')}</div>`).join('')}</div></div>`;
   if (w.confidence === 'low' && w.status === 'ready') h += `<div class="card" style="margin-top:18px;background:var(--sky)"><strong>這件是 AI 的推測</strong><p class="small" style="margin:4px 0 0">AI 不太確定作品身分。補拍一張說明牌，或直接修改名稱都可以。</p></div>`;
+  h += `<div style="margin-top:26px"><div class="row" style="justify-content:space-between"><h2 class="serif" style="margin:0;font-size:24px">我的感想</h2><span class="muted small">${(w.thoughts || []).length ? w.thoughts.length + ' 筆' : ''}</span></div>`;
+  if (!(w.thoughts || []).length) h += `<div class="card row" style="margin-top:12px;background:var(--sand);align-items:flex-start">${I.star()}<p style="margin:0">還沒有留下感想。想起什麼的時候，寫一句或錄一段都好。</p></div>`;
+  (w.thoughts || []).forEach((t, i) => {
+    const editing = S.ui.editThought === t.id;
+    h += `<div class="card" style="margin-top:12px;background:${['#F4E3DD', '#E3EADD', '#F7EDCF'][i % 3]}"><p class="muted small" style="margin:0">${fmtDate(ymd(t.at))}・${t.kind === 'voice' ? '語音感想' : '文字感想'}${t.edited ? '・已修改' : ''}</p>${t.kind === 'voice' && t.audio ? `<audio controls preload="none" src="${thoughtUrl(t)}" style="width:100%;margin:6px 0"></audio>` : ''}`;
+    if (editing) h += `<label class="lab" for="thIn" style="margin-top:6px">修改感想</label><textarea id="thIn" class="field" rows="3">${esc(t.text || '')}</textarea><div class="row" style="margin-top:8px"><button class="btn white grow" data-act="editThought" data-id="">取消</button><button class="btn solid grow" data-act="saveThought" data-id="${t.id}">存下來</button></div>`;
+    else h += `<p class="usr" style="margin:0">${esc(t.text || '')}</p><div class="row" style="margin-top:6px;gap:4px"><button class="linkbtn" data-act="editThought" data-id="${t.id}">修改</button><button class="linkbtn" data-act="deleteThought" data-id="${t.id}" style="color:var(--ink2)">刪除</button></div>`;
+    h += `</div>`;
+  });
+  if (S.ui.writing) h += `<div style="margin-top:14px"><label class="lab" for="noteIn">想留下什麼？</label><textarea id="noteIn" class="field" rows="3" placeholder="寫一句就好"></textarea><div class="row" style="margin-top:10px"><button class="btn grow" data-act="write">取消</button><button class="btn solid grow" data-act="saveNote">存下來</button></div></div>`;
+  else if (S.rec && S.rec.workId === w.id) h += `<div class="card row" role="status" style="margin-top:14px">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<strong class="grow">錄音中…</strong><button class="btn solid" data-act="stopRec">結束</button></div>`;
+  else h += `<div class="row" style="margin-top:16px"><button class="btn grow" data-act="addPhotos">${I.img}補照片</button><button class="btn grow" data-act="write">${I.pen}寫感想</button><button class="btn grow" data-act="startRec">${I.mic}錄音</button></div>`;
+  h += `<button class="btn solid block" data-act="shareWork" style="margin-top:12px">${I.share}分享這件作品</button></div>`;
   if (w.short) h += `<svg width="100%" height="16" viewBox="0 0 342 16" preserveAspectRatio="none" aria-hidden="true" style="display:block;margin:24px 0"><path d="M0 8h146M196 8h146" stroke="#C2A878"/><path d="M152 8c6-8 14-8 19 0 5 8 13 8 19 0" fill="none" stroke="#C2A878"/></svg>
   <p class="sec">${w.kind === 'street' ? '關於它' : '作品解說'}</p><p class="usr" style="margin:0">${esc(S.ui.showLong && w.long ? w.long : w.short)}</p>
   <div class="row wrap">${w.long ? `<button class="linkbtn" data-act="showLong">${S.ui.showLong ? '收起' : '看完整解說'}</button>` : ''}<button class="linkbtn" data-act="reanalyze">${S.ui.busy[w.id] ? '整理中…' : '依新資料重寫解說'}</button></div>
@@ -268,19 +282,7 @@ function viewWork() {
     if (ad) h += artistCard(ad, w);
     else h += `<button class="btn" data-act="artistDna" style="margin-top:22px">${S.ui.busy.artist ? '<span class="spin"></span> 整理中' : '看' + esc(w.artist) + '的藝術家視覺 DNA'}</button>`;
   }
-  h += `<div style="margin-top:32px"><div class="row" style="justify-content:space-between"><h2 class="serif" style="margin:0;font-size:24px">我的感想</h2><span class="muted small">${(w.thoughts || []).length ? w.thoughts.length + ' 筆' : ''}</span></div>`;
-  if (!(w.thoughts || []).length) h += `<div class="card row" style="margin-top:12px;background:var(--sand);align-items:flex-start">${I.star()}<p style="margin:0">還沒有留下感想。想起什麼的時候，寫一句或錄一段都好。</p></div>`;
-  (w.thoughts || []).forEach((t, i) => {
-    const editing = S.ui.editThought === t.id;
-    h += `<div class="card" style="margin-top:12px;background:${['#F4E3DD', '#E3EADD', '#F7EDCF'][i % 3]}"><p class="muted small" style="margin:0">${fmtDate(ymd(t.at))}・${t.kind === 'voice' ? '語音感想' : '文字感想'}${t.edited ? '・已修改' : ''}</p>${t.kind === 'voice' && t.audio ? `<audio controls preload="none" src="${thoughtUrl(t)}" style="width:100%;margin:6px 0"></audio>` : ''}`;
-    if (editing) h += `<label class="lab" for="thIn" style="margin-top:6px">修改感想</label><textarea id="thIn" class="field" rows="3">${esc(t.text || '')}</textarea><div class="row" style="margin-top:8px"><button class="btn white grow" data-act="editThought" data-id="">取消</button><button class="btn solid grow" data-act="saveThought" data-id="${t.id}">存下來</button></div>`;
-    else h += `<p class="usr" style="margin:0">${esc(t.text || '')}</p><div class="row" style="margin-top:6px;gap:4px"><button class="linkbtn" data-act="editThought" data-id="${t.id}">修改</button><button class="linkbtn" data-act="deleteThought" data-id="${t.id}" style="color:var(--ink2)">刪除</button></div>`;
-    h += `</div>`;
-  });
-  if (S.ui.writing) h += `<div style="margin-top:14px"><label class="lab" for="noteIn">想留下什麼？</label><textarea id="noteIn" class="field" rows="3" placeholder="寫一句就好"></textarea><div class="row" style="margin-top:10px"><button class="btn grow" data-act="write">取消</button><button class="btn solid grow" data-act="saveNote">存下來</button></div></div>`;
-  else if (S.rec && S.rec.workId === w.id) h += `<div class="card row" role="status" style="margin-top:14px">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<strong class="grow">錄音中…</strong><button class="btn solid" data-act="stopRec">結束</button></div>`;
-  else h += `<div class="row" style="margin-top:16px"><button class="btn grow" data-act="addPhotos">${I.img}補照片</button><button class="btn grow" data-act="write">${I.pen}寫感想</button><button class="btn grow" data-act="startRec">${I.mic}錄音</button></div>`;
-  h += `<p class="muted small" style="margin-top:22px">點右上角的愛心標成「最喜歡」，你的美感 DNA 會更準。</p><button class="linkbtn" data-act="deleteWork" style="color:var(--accent)">刪除這件作品</button></div></main>${nav('home')}`;
+  h += `<div style="margin-top:28px"><p class="muted small" style="margin:0">點右上角的愛心標成「最喜歡」，你的美感 DNA 會更準。</p><button class="linkbtn" data-act="deleteWork" style="color:var(--accent)">刪除這件作品</button></div></main>${nav('home')}`;
   if (S.ui.sheet) h += sheetHtml(w, p, ps);
   return h;
 }
@@ -906,6 +908,62 @@ async function dnaCards() {
     out.push(c); }
   return Promise.all(out.map((c, i) => new Promise(r => c.toBlob(b => r(new File([b], `my-aesthetic-dna-${i + 1}.png`, { type: 'image/png' })), 'image/png'))));
 }
+/* 分享單一作品：照片＋我的感想（在上）＋作品介紹，一張 1080×1350 */
+function linesOf(g, text, maxW) { let n = 0; for (const para of String(text).split('\n')) { let line = ''; n++; for (const ch of para) { if (g.measureText(line + ch).width > maxW) { n++; line = ch; } else line += ch; } } return n; }
+async function workCard(w) {
+  try { await document.fonts.ready; } catch (e) { /* ignore */ }
+  const c = document.createElement('canvas'); c.width = 1080; c.height = 1350; const g = c.getContext('2d');
+  g.fillStyle = '#FBF7EF'; g.fillRect(0, 0, 1080, 1350);
+  const footY = 1210;
+  const notes = (w.thoughts || []).filter(t => t.text && !/^（語音|^\(voice/.test(t.text));
+  const noteText = notes.slice(0, 2).map(t => t.text).join('\n');
+  g.font = '34px "Noto Sans TC", sans-serif';
+  const noteLines = noteText ? Math.min(6, linesOf(g, noteText, 860)) : 0;
+  const noteH = noteText ? 120 + noteLines * 52 : 0;
+  g.font = '28px "Noto Sans TC", sans-serif';
+  const aboutLines = w.short ? Math.min(3, linesOf(g, w.short, 900)) : 0;
+  const aboutH = w.short ? 70 + aboutLines * 44 : 0;
+  const o = origOf(w.title, w.titleOriginal);
+  const headH = 62 + (o ? 46 : 0) + 40;
+  const maxH = Math.max(300, Math.min(600, footY - 60 - 36 - 50 - headH - (noteH ? noteH + 30 : 0) - aboutH - 40));
+  const m = mainPhoto(w); let top = 60;
+  if (m && !m.broken) {
+    const img = await loadImage(m.blob); const r = Math.min(900 / img.naturalWidth, maxH / img.naturalHeight);
+    const iw = Math.round(img.naturalWidth * r), ih = Math.round(img.naturalHeight * r), ix = (1080 - iw) / 2;
+    g.fillStyle = '#FFFDF8'; g.fillRect(ix - 18, top, iw + 36, ih + 36); g.strokeStyle = '#C2A878'; g.lineWidth = 2; g.strokeRect(ix - 18, top, iw + 36, ih + 36);
+    g.drawImage(img, ix, top + 18, iw, ih); top += ih + 36;
+  }
+  let y = top + 70;
+  g.fillStyle = '#3A2F2A'; g.font = '600 50px "Noto Serif TC", "Cormorant Garamond", serif'; y = wrap(g, w.title || '', 90, y, 900, 62, y) + 46;
+  if (o) { g.fillStyle = '#6B5D55'; g.font = 'italic 34px "Cormorant Garamond", serif'; g.fillText(o.length > 48 ? o.slice(0, 47) + '…' : o, 90, y); y += 44; }
+  const pl = placeOf(w.placeId);
+  g.fillStyle = '#6B5D55'; g.font = '28px "Noto Sans TC", sans-serif'; g.fillText([w.artist || w.artistOriginal, w.year, pl && pl.name].filter(Boolean).join(' · ').slice(0, 60), 90, y); y += 30;
+  if (noteText) {
+    const boxTop = y + 24; const bottom = Math.min(boxTop + noteH, footY - aboutH - 20);
+    g.fillStyle = '#F4E3DD'; g.beginPath(); g.roundRect(70, boxTop, 940, bottom - boxTop, [50, 22, 56, 18]); g.fill();
+    g.fillStyle = '#9C5B55'; g.font = '700 26px "Noto Sans TC", sans-serif'; g.fillText(tt('My thoughts', '我的感想'), 110, boxTop + 54);
+    g.fillStyle = '#3A2F2A'; g.font = '34px "Noto Sans TC", sans-serif'; let ty = boxTop + 110;
+    for (const para of noteText.split('\n')) { if (ty > bottom - 30) break; ty = wrap(g, para, 110, ty, 860, 52, bottom - 30) + 52; }
+    y = bottom + 10;
+  }
+  if (w.short && y < footY - 110) {
+    g.fillStyle = '#6B5D55'; g.font = '700 24px "Noto Sans TC", sans-serif'; g.fillText(tt('About this work', '作品介紹'), 90, y + 44);
+    g.fillStyle = '#3A2F2A'; g.font = '28px "Noto Sans TC", sans-serif'; wrap(g, w.short, 90, y + 90, 900, 44, footY - 36);
+  }
+  g.fillStyle = '#F4EDE2'; g.fillRect(0, footY, 1080, 140);
+  const gname = S.settings.name ? (I18N.lang === 'en' ? `${S.settings.name}'s Gallery` : `${S.settings.name} 的畫廊`) : 'My Gallery';
+  g.fillStyle = '#3A2F2A'; g.font = '600 38px "Cormorant Garamond", "Noto Serif TC", serif'; g.fillText(gname, 90, footY + 65);
+  g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText(tt('Made with My Gallery', '用 My Gallery 整理看展收藏'), 90, footY + 105);
+  g.textAlign = 'right'; g.fillStyle = '#4F6652'; g.font = '700 28px "Noto Sans TC", sans-serif'; g.fillText(APP_URL, 990, footY + 85); g.textAlign = 'left';
+  return new Promise(r => c.toBlob(b => r(new File([b], `my-gallery-${(w.titleOriginal || w.title || 'work').replace(/[^\w一-鿿]+/g, '-').slice(0, 40)}.png`, { type: 'image/png' })), 'image/png'));
+}
+async function shareWork(w) {
+  toast(tt('Making your image…', '正在做分享圖…'));
+  const f = await workCard(w);
+  const text = `${w.title}${w.artist ? ' · ' + w.artist : ''}\n${tt('From my gallery · My Gallery', '來自我的畫廊・My Gallery')} https://${APP_URL}/`;
+  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: w.title, text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  downloadBlob(f, f.name);
+}
 async function shareDna() {
   if (!S.dna || !S.dna.data) return;
   toast('正在做分享圖…');
@@ -984,6 +1042,7 @@ function openViewer(ps, start) {
   show();
 }
 const ACT = {
+  shareWork: () => { const w = workOf(S.route.p.id); if (w) shareWork(w); },
   goAI: () => { go('settings'); setTimeout(() => { const e = $('#aiSec'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 80); },
   snap: () => snap(),
   checkUpdate: async () => {

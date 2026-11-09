@@ -37,7 +37,7 @@ const I18N = (() => {
     '藝術家視覺 DNA': 'Artist\'s visual DNA', '核心': 'Essence', '色彩': 'Color', '特徵': 'Traits', 'AI 歸納・同一位藝術家只產生一次': 'AI summary · made once per artist',
     '我的感想': 'My thoughts', '還沒有留下感想。想起什麼的時候，寫一句或錄一段都好。': 'No thoughts yet. Whenever something comes to mind, write a line or record a few words.',
     '語音感想': 'Voice note', '文字感想': 'Note', '・已修改': ' · edited', '修改感想': 'Edit note', '想留下什麼？': 'What would you like to remember?', '寫一句就好': 'Just a line is enough',
-    '錄音中…': 'Recording…', '錄音中': 'Recording', '結束': 'Finish', '補照片': 'Add photos', '寫感想': 'Write', '錄音': 'Record', '轉成文字中…': 'Transcribing…',
+    '錄音中…': 'Recording…', '錄音中': 'Recording', '結束': 'Finish', '補照片': 'Photos', '寫感想': 'Write', '錄音': 'Voice', '轉成文字中…': 'Transcribing…',
     '點右上角的愛心標成「最喜歡」，你的美感 DNA 會更準。': 'Tap the heart to mark favorites. Your taste profile gets more accurate.', '刪除這件作品': 'Delete this work',
     '移到另一件作品（拍到別的作品了）': 'Move to another work', '改照片類型（作品、細節、說明牌⋯）': 'Change photo type (artwork, detail, label…)',
     '獨立成新的一件作品': 'Make it a separate work', '設成這件作品的第一張（代表照片）': 'Use as the first photo of this work', '設成這個地點的封面': 'Use as the cover of this place', '刪除這張照片': 'Delete this photo',
@@ -68,7 +68,7 @@ const I18N = (() => {
     '用一句話說說看哪裡不像你': 'In one line, what does not feel like you?', '例如：我其實也很喜歡明亮的畫': 'e.g. I actually love bright paintings',
     '你常收藏的題材': 'Subjects you collect', '你收藏裡最像你的藝術家': 'Artists most like you', '策展人推薦': 'Curator\'s picks', '為什麼推薦：': 'Why: ',
     '你可能也會喜歡，': 'You may also love', '但還沒認識的藝術家': 'artists you have not met yet', '讓你意外的收藏': 'A surprise in your collection',
-    '在作品頁點「最喜歡」，策展人會更了解你。': 'Mark favorites on a work page and the curator will know you better.', '存成 3 張圖片分享': 'Share as 3 images',
+    '在作品頁點「最喜歡」，策展人會更了解你。': 'Mark favorites on a work page and the curator will know you better.', '存成 3 張圖片分享': 'Share as 3 images', '分享這件作品': 'Share this work',
     '色彩明度': 'Brightness', '色彩溫度': 'Warmth', '形體': 'Form', '情緒': 'Mood', '裝飾性': 'Ornament',
     '人物': 'People', '自然': 'Nature', '神話與宗教': 'Myth & religion', '日常生活': 'Everyday life', '城市': 'City', '建築': 'Architecture', '裝飾與工藝': 'Craft & ornament', '動物': 'Animals',
     // 設定
@@ -153,7 +153,7 @@ const I18N = (() => {
     [/(\d+) 件作品/g, (m, n) => P(n, 'work', 'works')], [/(\d+) 張照片/g, (m, n) => P(n, 'photo', 'photos')],
     [/(\d+) 個地點/g, (m, n) => P(n, 'place', 'places')], [/(\d+) 張/g, (m, n) => P(n, 'photo', 'photos')], [/(\d+) 件/g, (m, n) => P(n, 'work', 'works')],
     [/(\d+) 筆/g, (m, n) => P(n, 'note', 'notes')],
-    [/街頭/g, () => ' Streets'], [/未命名作品/g, () => 'Untitled'], [/作者不明/g, () => 'Unknown artist'], [/待辨識/g, () => 'Not recognized yet'], [/・最喜歡/g, () => ' · favorite'], [/・/g, () => ' · '],
+    [/文字感想/g, () => 'Note'], [/語音感想/g, () => 'Voice note'], [/街頭/g, () => ' Streets'], [/未命名作品/g, () => 'Untitled'], [/作者不明/g, () => 'Unknown artist'], [/待辨識/g, () => 'Not recognized yet'], [/・最喜歡/g, () => ' · favorite'], [/・/g, () => ' · '],
     [/AI 解說 · /g, () => 'AI notes · '], [/ · 已用你拍的說明牌校正/g, () => ' · checked against your label photo'], [/作品 ·/g, () => 'Artwork ·']
   ];
   function L(s) { if (lang === 'zh') return String(s).replace(/^type:/, ''); return D[s] ?? String(s).replace(/^type:/, ''); }
