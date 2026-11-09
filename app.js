@@ -1,6 +1,6 @@
 'use strict';
 /* ============ My Gallery ============ */
-const APP_VERSION = '2026.11.09-20';
+const APP_VERSION = '2026.11.09-21';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -468,8 +468,9 @@ function viewSettings() {
   <p class="sec" style="margin-top:26px">備份</p><p class="small" style="margin:0 0 10px">照片和資料只存在這支手機的瀏覽器裡。換手機或清除 Safari 資料前，記得先匯出備份。建議每天看完展匯出一次。</p>
   <div class="row wrap"><button class="btn solid" data-act="exportData">${S.ui.busy.export ? '<span class="spin"></span> 匯出中…' : '匯出備份'}</button><button class="btn" data-act="importData">匯入備份</button></div><p class="muted tiny" id="storageInfo" style="margin:8px 0 0"></p>
   <p class="sec" style="margin-top:26px">加到主畫面</p><p class="small" style="margin:0">iPhone：用 Safari 打開，按下方的「分享」，選「加入主畫面」。Android：Chrome 選單裡選「安裝應用程式」。</p>
-  <p class="sec" style="margin-top:26px">隱私</p><div class="card" style="background:var(--sage)">照片和資料都存在你的手機裡，這個 app 沒有伺服器。只有在辨識照片、轉錄語音、整理美感 DNA 時，才會把需要的內容直接送給你選的 AI。地點名稱會向 OpenStreetMap 查詢。</div>
+  <p class="sec" style="margin-top:26px">隱私</p><div class="card" style="background:var(--sage)">照片和資料都存在你的手機裡，這個 app 沒有伺服器。只有在辨識照片、轉錄語音、整理美感 DNA 時，才會把需要的內容直接送給你選的 AI。地點名稱會向 OpenStreetMap 查詢。${GC_CODE ? tt(' We count anonymous visits (for example, how many people opened the app or shared a work) to improve it. No photos, text or keys are ever included.', '另外會匿名統計使用次數（例如有多少人打開、分享），用來改善 app，不包含任何照片、文字或金鑰。') : ''}</div>
   <p class="sec" style="margin-top:26px">版本</p><div class="row wrap"><span class="small">目前版本 ${APP_VERSION}</span><button class="btn white" data-act="checkUpdate" style="min-height:44px;font-size:14px">${I.refresh}檢查更新</button></div>
+  ${GC_CODE ? `<label class="row" style="margin-top:12px;min-height:44px;gap:10px;cursor:pointer"><input type="checkbox" data-act="toggleTrack" ${S.settings.noTrack ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--primary)"><span class="small">${tt('Do not count visits from this phone (for the app owner)', '不要統計這支手機的使用（給 app 擁有者自己用）')}</span></label>` : ''}
   <button class="linkbtn" data-act="resetAll" style="color:var(--accent);margin-top:20px">清除這支手機上的所有資料</button></main>${nav('home')}`;
 }
 
@@ -763,6 +764,7 @@ async function integrate(photo, r, ctx) {
 }
 async function handleFiles(files, fromCamera) {
   const arr = [...files]; if (!arr.length) return;
+  track(fromCamera ? 'photo-camera' : 'photo-import');
   if (!fromCamera) toast(!hasAI() ? tt(`Got ${arr.length} photo(s). Sorting them by place and date.`, `收到 ${arr.length} 張照片，正在依地點和日期整理。`) : arr.length > 1 ? `收到 ${arr.length} 張照片，正在背景辨識。可以先去看別的，關掉 app 也不會遺失。` : '收到照片，正在背景辨識。', 4500);
   for (const f of arr) await processFile(f, fromCamera);
   runQueue();
@@ -839,11 +841,23 @@ async function makeDna(reword) {
     const data = await AI.aestheticDna(S.settings, { summary, avgDims: avg, subjects, feedback: S.settings.feedback, prevNames: reword && S.dna ? [S.dna.data.name] : [] });
     let palette = (S.dna && S.dna.basis === el.length && S.dna.palette) || [];
     if (!palette.length) palette = await paletteFromBlobs(ws.map(x => { const ps = photosOf(x.w.id); const m = ps.find(p => p.type === '作品') || ps.find(p => p.type === '細節'); return m && m.thumb; }).filter(Boolean));
+    track('dna-made');
     S.dna = { basis: el.length, data, palette, avg, subjects, at: Date.now() }; await DB.setKV('dna', S.dna);
   } catch (e) { toast(e.message); }
   delete S.ui.busy.dna; bgRender();
 }
 const APP_URL = 'rubykuan0418.github.io/my-gallery';
+/* 使用人數統計（GoatCounter）：只記錄「有人打開、做了哪一類動作」，不含照片、文字、金鑰或任何個人資料 */
+const GC_CODE = 'rubykuan'; // GoatCounter：https://rubykuan.goatcounter.com
+function track(name, isEvent = true) {
+  if (!GC_CODE || !navigator.onLine || S.settings.noTrack) return;
+  try {
+    const q = new URLSearchParams({ p: name, t: isEvent ? name : 'My Gallery', e: isEvent ? 'true' : 'false', b: '0', s: `${screen.width},${screen.height},${devicePixelRatio || 1}`, rnd: Math.random().toString(36).slice(2) });
+    if (!isEvent && document.referrer) q.set('r', document.referrer);
+    const u = `https://${GC_CODE}.goatcounter.com/count?${q}`;
+    const img = new Image(); img.referrerPolicy = 'no-referrer-when-downgrade'; img.src = u;
+  } catch (e) { /* ignore */ }
+}
 /* 美感 DNA 分享圖：三張卡片（我的美感／色彩與策展人筆記／美感輪廓與題材），每張都帶 app 網址 */
 function blobPath(g, cx, cy, r, color) {
   const pts = [[48, 6], [78, 42], [72, 82], [30, 82], [8, 56], [12, 18]];
@@ -958,6 +972,7 @@ async function workCard(w) {
   return new Promise(r => c.toBlob(b => r(new File([b], `my-gallery-${(w.titleOriginal || w.title || 'work').replace(/[^\w一-鿿]+/g, '-').slice(0, 40)}.png`, { type: 'image/png' })), 'image/png'));
 }
 async function shareWork(w) {
+  track('share-work');
   toast(tt('Making your image…', '正在做分享圖…'));
   const f = await workCard(w);
   const text = `${w.title}${w.artist ? ' · ' + w.artist : ''}\n${tt('From my gallery · My Gallery', '來自我的畫廊・My Gallery')} https://${APP_URL}/`;
@@ -966,6 +981,7 @@ async function shareWork(w) {
 }
 async function shareDna() {
   if (!S.dna || !S.dna.data) return;
+  track('share-dna');
   toast('正在做分享圖…');
   const files = await dnaCards();
   if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: '我的美感 DNA', text: `我的美感 DNA・用 My Gallery 整理看展收藏：https://${APP_URL}/` }); return; } catch (e) { if (e.name === 'AbortError') return; } }
@@ -1044,6 +1060,7 @@ function openViewer(ps, start) {
 const ACT = {
   shareWork: () => { const w = workOf(S.route.p.id); if (w) shareWork(w); },
   goAI: () => { go('settings'); setTimeout(() => { const e = $('#aiSec'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 80); },
+  toggleTrack: async (d, el) => { S.settings.noTrack = !S.settings.noTrack; await saveSettings(); toast(S.settings.noTrack ? tt('This phone will not be counted.', '這支手機的使用不會被統計。') : tt('Counting turned back on.', '已恢復統計。')); render(); },
   snap: () => snap(),
   checkUpdate: async () => {
     if (!navigator.onLine) { toast('目前沒有網路，連上網路後再檢查更新。'); return; } toast('正在檢查更新…');
@@ -1140,7 +1157,7 @@ const ACT = {
     const v = $('#keyIn').value.trim(); if (!v) { S.ui.obMsg = '請先貼上金鑰。'; render(); return; }
     S.settings.keys = { ...S.settings.keys, [S.settings.provider]: v }; await saveSettings();
     S.ui.busy.key = true; S.ui.obMsg = ''; render();
-    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; queuedWorks().forEach(w => { w.hold = false; }); const nq = queuedWorks().length; if (nq && S.settings.onboarded) toast(tt(`AI is on. Organizing your ${nq} photos now.`, `AI 已開啟，正在整理你的 ${nq} 張照片。`), 4500); retryPending(); }
+    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; track('ai-key-added-' + S.settings.provider); queuedWorks().forEach(w => { w.hold = false; }); const nq = queuedWorks().length; if (nq && S.settings.onboarded) toast(tt(`AI is on. Organizing your ${nq} photos now.`, `AI 已開啟，正在整理你的 ${nq} 張照片。`), 4500); retryPending(); }
     catch (e) { S.ui.obMsg = e.message; }
     delete S.ui.busy.key; render();
   },
@@ -1152,7 +1169,7 @@ const ACT = {
   ob: d => { const k = $('#keyIn'); if (k && k.value.trim()) S.settings.keys[S.settings.provider] = k.value.trim(); saveSettings(); S.ui.ob = +d.v; S.ui.obMsg = ''; render(); scrollTo(0, 0); },
   obName: async () => { S.settings.name = $('#obName').value.trim(); S.ui.obNameDraft = null; await saveSettings(); S.ui.ob = 1; render(); scrollTo(0, 0); },
   setLang: async d => { const nm = $('#obName'); if (nm) { S.ui.obNameDraft = nm.value; S.settings.name = nm.value.trim(); } S.settings.lang = d.v; I18N.set(d.v); await saveSettings(); if (d.v === 'zh') location.reload(); else { I18N.dom(document.body); render(); } },
-  obDone: async () => { S.settings.onboarded = true; await saveSettings(); tab('home'); }
+  obDone: async () => { S.settings.onboarded = true; await saveSettings(); track(`onboarded-${S.settings.lang}-${hasAI() ? 'ai' : 'basic'}`); tab('home'); }
 };
 async function setAvatar(blob) { await DB.setKV('avatar', await blob.arrayBuffer()); if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(blob); }
 
@@ -1207,6 +1224,9 @@ async function loadAll() {
 (async function start() {
   try { await loadAll(); } catch (e) { $('#app').innerHTML = '<p style="padding:30px">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式的 Safari 或 Chrome 打開。</p>'; return; }
   S.route = { name: 'home', p: {} }; I18N.watch(); I18N.dom(document.body); render();
+  track('/' + (S.settings.lang || 'en'), false);
+  if (window.matchMedia && matchMedia('(display-mode: standalone)').matches || navigator.standalone) track('open-from-home-screen');
+  if (S.settings.onboarded) track(hasAI() ? 'active-ai' : 'active-basic');
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update().catch(() => {})).catch(() => {});
     // 有新版時自動換上（只重新整理一次）
