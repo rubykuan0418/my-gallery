@@ -1,6 +1,6 @@
 'use strict';
 /* ============ My Gallery ============ */
-const APP_VERSION = '2026.11.09-18';
+const APP_VERSION = '2026.11.09-19';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -114,7 +114,10 @@ function allVisits() { return S.places.flatMap(pl => visitsOf(pl.id).map(v => ({
 function workWeight(w) { const ps = photosOf(w.id); return 1 + (w.fav ? 2 : 0) + ((w.thoughts || []).length ? 1 : 0) + (ps.some(p => p.type === '我與作品') ? 0.8 : 0) + (ps.length >= 3 ? 0.4 : 0) + (seenDates(w).length > 1 ? 1 : 0); }
 const origOf = (zh, o) => (o && norm(o) !== norm(zh) ? o : '');
 const titleSub = w => { const o = origOf(w.title, w.titleOriginal); return o ? `<span class="orig">${esc(o)}</span>` : ''; };
-const artistHtml = (w, empty = '作者不明') => { const o = origOf(w.artist, w.artistOriginal); return esc(w.artist || (o ? '' : empty)) + (o ? `${w.artist ? ' ' : ''}<span class="orig-i">${esc(o)}</span>` : ''); };
+const LATIN = /^[\x00-\u024f\u1e00-\u1eff\s.,'’·-]+$/;
+const artistHtml = (w, empty = '作者不明') => { if (w.status === 'pending' && !hasAI() && !w.artist) return ''; let o = origOf(w.artist, w.artistOriginal); if (o && I18N.lang === 'en' && LATIN.test(o) && LATIN.test(w.artist || '')) o = ''; return esc(w.artist || (o ? '' : empty)) + (o ? `${w.artist ? ' ' : ''}<span class="orig-i">${esc(o)}</span>` : ''); };
+const hasAI = () => Object.values(S.settings.keys || {}).some(Boolean);
+const untitled = () => tt('Untitled', '未命名作品');
 const eligible = () => S.works.filter(w => w.status === 'ready' && !w.isCopy && w.dims);
 
 /* ---------- 導覽 ---------- */
@@ -167,7 +170,8 @@ function viewHome() {
   if (todayVisit) h += `<button class="hit row" data-act="openCamera" style="margin-top:18px;background:var(--sage);border-radius:26px 14px 30px 12px;padding:14px 16px;gap:12px">${I.star('#4F6652', 22)}<span class="grow" style="line-height:1.5"><strong>今天在${esc(todayVisit.name)}</strong><br><span class="muted small">回到相機，繼續記錄</span></span>${I.next}</button>`;
   const nBroken = S.photos.filter(p => p.broken).length;
   if (nBroken) h += `<div class="card" style="margin-top:12px;background:var(--pink)"><p class="small" style="margin:0 0 10px;line-height:1.6"><strong>有 ${nBroken} 張照片的檔案遺失了</strong><br>這是舊版在 iPhone 上存檔的問題，新版已經修好。手機相簿裡的原圖都還在，可以重新匯入。</p><button class="btn white" data-act="cleanBroken">清除遺失的照片</button></div>`;
-  if (QRUN || S.queue.length) h += `<div class="card row" role="status" style="margin-top:12px;background:var(--sky)"><span class="spin" style="flex:none"></span><span class="grow small" style="line-height:1.5"><strong>正在辨識照片・還有 ${pending + S.queue.length} 張</strong><br>可以先去看別的；關掉 app 也不會遺失，下次打開會接著辨識。</span></div>`;
+  if (!hasAI() && n) h += `<div class="card" style="margin-top:12px;background:var(--butter);border-radius:26px 14px 30px 12px"><p class="small" style="margin:0 0 10px;line-height:1.6"><strong>${tt('Basic mode', '基本模式')}</strong><br>${tt('Your photos are sorted by place and date. Add an AI key to recognize artworks and get notes, tips and your Taste DNA.', '照片已依地點和日期整理好。加上 AI 金鑰，就能自動認出作品，還有解說、觀賞重點和美感 DNA。')}</p><button class="btn solid" data-act="goAI" style="min-height:44px;font-size:14px">${I.star('#EBCF8A', 18)}${tt('Turn on AI', '開啟 AI')}</button></div>`;
+  else if (QRUN || S.queue.length) h += `<div class="card row" role="status" style="margin-top:12px;background:var(--sky)"><span class="spin" style="flex:none"></span><span class="grow small" style="line-height:1.5"><strong>正在辨識照片・還有 ${pending + S.queue.length} 張</strong><br>可以先去看別的；關掉 app 也不會遺失，下次打開會接著辨識。</span></div>`;
   else if (pending) { const ew = S.works.find(w => w.status === 'pending' && w.error); h += `<div class="card row" style="margin-top:12px;background:var(--butter)"><span class="grow small" style="line-height:1.5">有 ${pending} 張照片還沒辨識，照片都已經存好了。${ew ? '<br><span class="muted">' + esc(ew.error) + '</span>' : ''}</span><button class="btn white" data-act="retryAll">${S.ui.busy.retry ? '<span class="spin"></span>' : '再試一次'}</button></div>`; }
   if (!n && !np) {
     h += `<div class="empty">${I.blob('#F4E3DD', 120)}<h2 class="serif" style="font-size:26px;margin:8px 0">你的畫廊還是空的</h2><p class="muted">在美術館、或在路上看到喜歡的東西，打開相機拍下來就好。今天的畫廊會自己慢慢長出來。</p>
@@ -194,7 +198,7 @@ function viewHome() {
     let ws = [...S.works].sort((a, b) => lastAt(b) - lastAt(a));
     if (S.ui.favOnly) ws = ws.filter(w => w.fav);
     h += `<div class="row" style="justify-content:space-between;margin:18px 0 14px"><span class="muted small">${S.ui.favOnly ? '最喜歡的作品' : `全部 ${S.works.length} 件・最近的在上面`}</span><button class="opt ${S.ui.favOnly ? 'on' : ''}" aria-pressed="${S.ui.favOnly}" data-act="favOnly">只看最喜歡</button></div><div class="grid2">`;
-    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}${titleSub(w)}</strong><span class="muted small" style="position:relative">${artistHtml(w)}・${photosOf(w.id).length} 張${w.fav ? '・最喜歡' : ''}</span></button>`; });
+    ws.forEach((w, i) => { const m = mainPhoto(w); h += `<button class="hit thumbwork" data-act="go" data-to="work" data-id="${w.id}"><span class="bk" style="background:${PASTEL[i % 5]};border-radius:${RAD[i % 5]}"></span><span class="frame">${m ? `<img src="${purl(m)}" alt="${esc(w.title)}">` : ''}</span>${w.status === 'pending' && hasAI() ? `<span class="badge">${S.working === w.id ? '辨識中…' : '待辨識'}</span>` : w.isCopy ? '<span class="badge">複製品</span>' : w.confidence === 'low' ? '<span class="badge">AI 推測</span>' : ''}<strong style="display:block;font-size:15px;margin-top:8px;line-height:1.5;position:relative">${esc(w.title)}${titleSub(w)}</strong><span class="muted small" style="position:relative">${[artistHtml(w), photosOf(w.id).length + ' 張'].filter(Boolean).join('・')}${w.fav ? '・最喜歡' : ''}</span></button>`; });
     h += `</div>`;
   } else if (S.ui.homeView === 'map') {
     h += footprintHtml();
@@ -221,7 +225,7 @@ function viewPlace() {
   <p class="sec" style="margin-top:28px">紀錄・最近的在上面</p><p class="muted small" style="margin:-4px 0 12px">這些是 AI 自動整理的。覺得哪張放錯了，點進作品，按「這張放錯了？」就能調整。</p>`;
   vs.forEach(v => {
     h += `<p style="margin:16px 0 0"><strong>${fmtDate(v.date)}</strong> <span class="muted small">${fmtTime(v.first)}–${fmtTime(v.last)}・${v.works.length} 件・${v.photos} 張</span></p><div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">`;
-    v.works.forEach(w => { const m = mainPhoto(w); h += `<button class="hit listrow" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="">` : '<span style="width:58px;height:58px"></span>'}<span class="grow" style="line-height:1.5"><strong style="font-size:15px">${esc(w.title)}</strong>${titleSub(w)}<span style="display:block" class="muted small">${artistHtml(w, w.status === 'pending' ? '待辨識' : '作者不明')}・${photosOf(w.id).length} 張</span></span>${I.next}</button>`; });
+    v.works.forEach(w => { const m = mainPhoto(w); h += `<button class="hit listrow" data-act="go" data-to="work" data-id="${w.id}">${m ? `<img src="${purl(m)}" alt="">` : '<span style="width:58px;height:58px"></span>'}<span class="grow" style="line-height:1.5"><strong style="font-size:15px">${esc(w.title)}</strong>${titleSub(w)}<span style="display:block" class="muted small">${[artistHtml(w, w.status === 'pending' ? (hasAI() ? '待辨識' : '') : '作者不明'), photosOf(w.id).length + ' 張'].filter(Boolean).join('・')}</span></span>${I.next}</button>`; });
     h += `</div>`;
   });
   return h + `</main>${nav('home')}`;
@@ -239,7 +243,8 @@ function viewWork() {
   ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(L('type:' + p.type))}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
   <div class="row" style="margin-top:10px;overflow-x:auto;padding-bottom:2px">${ps.map((x, i) => `<button class="hit" style="width:auto;flex:none" data-act="photoIdx" data-i="${i}" aria-label="看第 ${i + 1} 張：${esc(L('type:' + x.type))}"><img src="${purl(x)}" alt="" style="width:50px;height:50px;object-fit:cover;display:block;border:3px solid ${i === idx ? 'var(--accent)' : 'var(--card)'};border-radius:12px 8px 14px 6px"></button>`).join('')}</div>
   <div class="row wrap" style="margin-top:8px"><button class="btn white" data-act="sheet" data-v="menu" style="font-size:14px">${I.sort}整理這張照片</button><button class="btn white" data-act="removePhoto" style="font-size:14px">${I.trash}刪除這張</button></div>`;
-  if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
+  if (w.status === 'pending' && !hasAI()) h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${tt('Basic mode', '基本模式')}</strong><p class="small" style="margin:4px 0 10px">${tt('Give it a name, or turn on AI to recognize it and get notes and what to look for.', '可以自己替它取個名字；或開啟 AI，自動認出作品、寫解說和觀賞重點。')}</p><div class="row wrap"><button class="btn white" data-act="editInfo">${I.pen}${tt('Name it', '替它取名')}</button><button class="btn solid" data-act="goAI">${tt('Turn on AI', '開啟 AI')}</button></div></div>`;
+  else if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
   h += `<div style="margin-top:20px">${w.isCopy ? '<span class="chip">複製品・不算進美感 DNA</span> ' : ''}${w.kind === 'street' ? '<span class="chip" style="background:var(--sage)">路上的小美好</span>' : ''}`;
   if (S.ui.editInfo) {
     h += `<div class="card" style="margin-top:10px">${[['eiT', '作品名稱（中文）', w.title], ['eiTo', '作品原文或英文名稱', w.titleOriginal], ['eiA', '藝術家（中文）', w.artist], ['eiAo', '藝術家原文或英文名字', w.artistOriginal], ['eiY', '年代', w.year], ['eiM', '媒材', w.medium]].map(([id, l, v]) => `<label class="lab" for="${id}">${l}</label><input id="${id}" class="field" value="${esc(v || '')}" style="margin-bottom:10px">`).join('')}<p class="muted tiny" style="margin:0 0 10px">存下來後，可以按「依新資料重寫解說」讓 AI 重新整理。</p><div class="row"><button class="btn grow" data-act="editInfo">取消</button><button class="btn solid grow" data-act="saveInfo">存下來</button></div></div>`;
@@ -325,8 +330,8 @@ function viewCamera() {
   else if (lw && L.grouped) h += `<div class="pill" role="status" style="background:var(--sage)">已收在一起（${photosOf(lw.id).length} 張）・《${esc(lw.title)}》</div>`;
   else if (lw) {
     const m = mainPhoto(lw);
-    h += `<div class="result"><div class="hd"><div class="grow"><span class="chip" style="background:var(--card)">${lw.status === 'pending' ? '待辨識' : seenDates(lw).length > 1 ? '第 ' + seenDates(lw).length + ' 次見到' : lw.kind === 'street' ? '路上的小美好' : '第一次見到'}</span><h2 class="serif" style="margin:6px 0 0;font-size:24px;line-height:1.3">${esc(lw.title)}</h2>${titleSub(lw)}<p class="muted small" style="margin:2px 0 0">${artistHtml(lw, '')}${lw.year ? '・' + esc(lw.year) : ''}</p></div>${m ? `<img src="${purl(m)}" alt="">` : ''}</div>
-    <div style="padding:14px 16px 16px"><p style="margin:0 0 12px">${esc(lw.status === 'pending' ? (lw.error || '有網路後會自動辨識。') : lw.short || '')}</p>${(lw.lookFor || []).length ? lookForHtml(lw.lookFor, true) : ''}<div class="grid2" style="gap:8px"><button class="btn" data-act="go" data-to="work" data-id="${lw.id}">完整解說</button><button class="btn" data-act="startRec" data-id="${lw.id}">${I.mic}說感想</button><button class="btn" data-act="fixLast" data-id="${lw.id}">這不對</button><button class="btn solid" data-act="dismissLast">繼續看展</button></div></div></div>`;
+    h += `<div class="result"><div class="hd"><div class="grow"><span class="chip" style="background:var(--card)">${lw.status === 'pending' ? (hasAI() ? '待辨識' : tt('Saved', '已存好')) : seenDates(lw).length > 1 ? '第 ' + seenDates(lw).length + ' 次見到' : lw.kind === 'street' ? '路上的小美好' : '第一次見到'}</span><h2 class="serif" style="margin:6px 0 0;font-size:24px;line-height:1.3">${esc(lw.title)}</h2>${titleSub(lw)}<p class="muted small" style="margin:2px 0 0">${artistHtml(lw, '')}${lw.year ? '・' + esc(lw.year) : ''}</p></div>${m ? `<img src="${purl(m)}" alt="">` : ''}</div>
+    <div style="padding:14px 16px 16px"><p style="margin:0 0 12px">${esc(lw.status === 'pending' ? (hasAI() ? (lw.error || '有網路後會自動辨識。') : tt('Basic mode: you can name it in your gallery. Turn on AI in Settings to recognize artworks automatically.', '基本模式：可以回畫廊替它取名。到設定開啟 AI，就能自動認出作品。')) : lw.short || '')}</p>${(lw.lookFor || []).length ? lookForHtml(lw.lookFor, true) : ''}<div class="grid2" style="gap:8px"><button class="btn" data-act="go" data-to="work" data-id="${lw.id}">完整解說</button><button class="btn" data-act="startRec" data-id="${lw.id}">${I.mic}說感想</button><button class="btn" data-act="fixLast" data-id="${lw.id}">這不對</button><button class="btn solid" data-act="dismissLast">繼續看展</button></div></div></div>`;
   }
   if (S.rec) h += `<div class="pill row" role="status">${I.blob('#9C5B55', 18).replace('<svg', '<svg class="pulse"')}<span class="grow"><strong>錄音中</strong><br><span class="muted tiny">再按一次麥克風就結束</span></span></div>`;
   h += `</div>`;
@@ -394,6 +399,12 @@ function viewDna() {
   <div class="row wrap" style="margin-top:8px"><button class="btn" data-act="pickAvatar" style="min-height:44px;font-size:14px">上傳照片</button>${meShots.length ? `<button class="btn" data-act="togglePick" style="min-height:44px;font-size:14px">從收藏挑</button>` : ''}</div></div></div>`;
   if (S.ui.pick) h += `<div class="card" style="margin-top:12px"><p style="margin:0 0 8px">選一張「我與作品」當大頭照</p><div class="row wrap">${meShots.map(p => `<button class="hit" style="width:auto" data-act="avatarFrom" data-id="${p.id}"><img class="avatar" src="${purl(p)}" alt="" style="width:72px;height:72px"></button>`).join('')}</div><p class="muted tiny" style="margin:8px 0 0">照片只存在你的手機裡。</p></div>`;
   h += `<h1 class="serif" style="margin:26px 0 0;font-size:30px">我的美感 DNA</h1>`;
+  if (!hasAI()) {
+    if (!S.basicPalette && S.photos.length) { S.basicPalette = []; paletteFromBlobs(S.photos.filter(p => !p.broken && p.type !== '說明牌').slice(-40).map(p => p.thumb)).then(c => { S.basicPalette = c; bgRender(); }); }
+    const pal = S.basicPalette || [];
+    return h + `${pal.length ? `<p class="sec" style="margin-top:22px">${tt('My colors · from your photos', '我的色彩・從你拍的照片計算')}</p><div class="grid3" style="grid-template-columns:repeat(${pal.length},minmax(0,1fr));align-items:end">${pal.map((c, i) => `<div style="transform:rotate(${[-6, 4, -2, 8, -4][i]}deg)">${I.blob(c, 60)}</div>`).join('')}</div>` : ''}
+    <div class="card" style="margin-top:22px;background:var(--pink)"><h2 class="serif" style="margin:0;font-size:22px;line-height:1.35">${tt('Your Taste DNA needs AI', '美感 DNA 需要 AI')}</h2><p style="margin:6px 0 12px">${tt('Once AI is on, your personal curator reads your collection and tells you what you are drawn to, with artists you may love.', '開啟 AI 後，你的私人策展人會讀你的收藏，告訴你被什麼吸引，還會推薦你可能喜歡的藝術家。')}</p><button class="btn solid" data-act="goAI">${I.star('#EBCF8A', 18)}${tt('Turn on AI', '開啟 AI')}</button></div></main>${nav('dna')}`;
+  }
   if (n < 5) {
     return h + `<div class="card" style="margin-top:16px;background:var(--pink)"><h2 class="serif" style="margin:0;font-size:22px;line-height:1.35">再收藏 ${5 - n} 件作品，就能看到你的美感 DNA</h2><p class="muted" style="margin:6px 0 0">目前有 ${n} 件可以分析的作品。多拍幾件喜歡的作品，這一頁會慢慢長出你自己的樣子。</p></div></main>${nav('dna')}`;
   }
@@ -446,7 +457,7 @@ function viewSettings() {
   const p = S.settings.provider;
   return `<main class="screen"><div class="topbar"><button class="back" data-act="back">${I.back}返回</button></div><h1 class="serif" style="margin:6px 0 18px;font-size:32px">設定</h1>
   <p class="sec">${tt('Language', '語言')}</p>${langSwitch()}<p class="muted tiny" style="margin:6px 0 18px">${tt('New notes from the AI will be written in this language.', 'AI 之後寫的解說會用這個語言。')}</p>
-  <p class="sec">解說用的 AI</p>${aiSetupHtml('settings')}
+  <p class="sec" id="aiSec">解說用的 AI</p><p class="small" style="margin:-4px 0 10px">${hasAI() ? `<span class="chip" style="background:var(--sage)">${tt('AI mode is on', 'AI 模式已開啟')}</span>` : `<span class="chip" style="background:var(--butter)">${tt('Basic mode', '基本模式')}</span> ${tt('Add a key below to turn on AI.', '在下面貼上金鑰，就會開啟 AI。')}`}</p>${aiSetupHtml('settings')}
   <div class="card" style="margin-top:14px;background:var(--sage)"><strong>自動備援</strong><p class="small" style="margin:4px 0 8px">兩把以上的金鑰都設定好，主要的 AI 忙碌、太慢或連不上時，會自動改用另一個，不用自己切換。</p>
   <div class="row wrap">${Object.entries(AI.PROVIDERS).map(([k, v]) => `<span class="chip" style="background:var(--card)">${v.name}：${(S.settings.keys || {})[k] ? (k === S.settings.provider ? '主要' : '備用') : '未設定'}</span>`).join('')}</div>
   <p class="muted tiny" style="margin:8px 0 0">想加備用的 AI：點上面的名稱切換過去，貼上金鑰測試後，再點回你想當主要的那個。</p></div>
@@ -486,9 +497,11 @@ function viewOnboarding() {
     <button class="btn solid block" data-act="obName" style="margin-top:18px">${tt('Open my gallery', '打開我的畫廊')}</button>
     <p class="muted tiny" style="text-align:center;margin:12px 0 0">${tt('Beta · Your photos stay on your phone.', '測試版・照片只存在你的手機裡')}</p>`;
   }
-  if (st === 1) h += `<p class="sec" style="margin-top:22px">${tt('Step', '步驟')} 1 / 2</p><h1 class="serif" style="font-size:30px;margin:0 0 6px">${tt('Set up your AI', '設定你的 AI')}</h1><p style="margin:0 0 12px">${tt('To recognize artworks and write notes, My Gallery uses your own AI key. It takes about 3 minutes.', '辨識作品和寫解說，需要一把你自己的 AI 金鑰。照著下面的步驟，大約 3 分鐘。')}</p>${aiSetupHtml('ob')}
+  if (st === 1) h += `<p class="sec" style="margin-top:22px">${tt('Step', '步驟')} 1 / 2</p><h1 class="serif" style="font-size:30px;margin:0 0 6px">${tt('Set up your AI', '設定你的 AI')} <span class="beta" style="vertical-align:middle;background:var(--sage)">${tt('Recommended', '建議')}</span></h1><p style="margin:0 0 12px">${tt('We recommend it: AI recognizes each artwork and writes short notes for you. You can also start without it and add a key any time in Settings.', '建議設定：AI 會幫你認出每件作品、寫簡短解說。也可以先不設定，之後隨時在設定裡加上。')}</p>
+    <div class="grid2" style="gap:8px;margin-bottom:14px"><div class="note" style="background:var(--sage);margin:0"><strong>${tt('Without a key', '沒有金鑰也能')}</strong><ul style="margin:4px 0 0;padding-left:18px">${[tt('Photos sorted by place and date', '照片依地點和日期整理'), tt('Name works yourself', '自己替作品命名'), tt('Notes, voice notes, favorites', '寫感想、錄音、標最喜歡'), tt('Footprints map', '足跡地圖'), tt('Your colors', '我的色彩')].map(x => `<li>${x}</li>`).join('')}</ul></div><div class="note" style="background:var(--butter);margin:0"><strong>${tt('With a key', '有金鑰還會')}</strong><ul style="margin:4px 0 0;padding-left:18px">${[tt('Recognizes the artwork', '自動認出作品'), tt('Notes and what to look for', '解說和觀賞重點'), tt('Groups photos of a work', '同一件作品收在一起'), tt('Taste DNA and picks', '美感 DNA 和推薦'), tt('Voice notes to text', '語音轉成文字')].map(x => `<li>${x}</li>`).join('')}</ul></div></div>
+    ${aiSetupHtml('ob')}
     <div class="note" style="margin-top:14px"><strong>${tt('Tip: add a backup AI', '小提醒：可以加一個備用 AI')}</strong><br>${tt('If you add a key for another AI later in Settings, My Gallery switches to it automatically when the first one is busy.', '之後在設定裡再加一把其他 AI 的金鑰，主要的 AI 忙碌時，會自動改用另一個。')}</div>
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:16px">${(S.settings.keys || {})[S.settings.provider] ? `<button class="btn solid block" data-act="ob" data-v="2">${tt('Next', '下一步')}</button>` : ''}<button class="btn ghost block" data-act="ob" data-v="2">${tt('Skip for now', '先跳過，之後再設定')}</button><button class="btn ghost block" data-act="ob" data-v="0">${tt('Back', '上一步')}</button></div>`;
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:16px">${(S.settings.keys || {})[S.settings.provider] ? `<button class="btn solid block" data-act="ob" data-v="2">${tt('Next', '下一步')}</button>` : ''}<button class="btn ghost block" data-act="ob" data-v="2">${tt('Start in basic mode for now', '先用基本模式開始')}</button><button class="btn ghost block" data-act="ob" data-v="0">${tt('Back', '上一步')}</button></div>`;
   if (st === 2) h += `<p class="sec" style="margin-top:22px">${tt('Step', '步驟')} 2 / 2</p><h1 class="serif" style="font-size:30px;margin:0 0 10px">${tt('Add it to your Home Screen', '放到手機主畫面')}</h1><p>${tt('It will open like a regular app, and your photos are less likely to be cleared.', '這樣打開就像一般的 app，照片也比較不會被系統清掉。')}</p>
     <ol class="steps"><li>${tt('Open this page in Safari', '用 Safari 打開這個網頁')}</li><li>${tt('Tap the Share button at the bottom', '按下方中間的「分享」按鈕')}</li><li>${tt('Choose "Add to Home Screen", then tap Add', '選「加入主畫面」，再按「新增」')}</li></ol>
     <p class="muted small">${tt('Android: in the Chrome menu, choose "Install app".', 'Android：在 Chrome 選單裡選「安裝應用程式」。')}</p>
@@ -606,8 +619,12 @@ async function mergeDuplicatePlaces() {
     await savePlace(keep);
   }
 }
+async function basicPlace(city, loc) {
+  const f = S.places.find(p => (city && norm(p.city || '') === norm(city)) || (dist(loc, p) != null && dist(loc, p) < 1));
+  return f || newPlace({ kind: 'walk', name: city || tt('Somewhere', '某個地方'), city: city || '', lat: loc ? loc.lat : null, lng: loc ? loc.lng : null });
+}
 async function museumPlace(r, loc, city) {
-  const f = S.places.find(p => (norm(p.name) === norm(r.museum) || (r.museumOriginal && norm(p.nameOriginal) === norm(r.museumOriginal)) || (dist(loc, p) != null && dist(loc, p) < 0.3)));
+  const f = S.places.find(p => (norm(p.name) === norm(r.museum) || (r.museumOriginal && norm(p.nameOriginal) === norm(r.museumOriginal)) || (p.kind === 'museum' && dist(loc, p) != null && dist(loc, p) < 0.3)));
   return f || newPlace({ kind: 'museum', name: r.museum, nameOriginal: r.museumOriginal || '', city: r.city || city || '', lat: loc ? loc.lat : null, lng: loc ? loc.lng : null });
 }
 function applyAI(w, r, opts = {}) {
@@ -632,18 +649,32 @@ async function processFile(file, fromCamera) {
     const loc = exif.lat != null ? { lat: exif.lat, lng: exif.lng } : (fromCamera ? await getLocation() : null);
     const photo = { id: uid(), workId: null, placeId: null, type: '作品', blob: prep.full, thumb: prep.thumb, w: prep.w, h: prep.h, takenAt, lat: loc ? loc.lat : null, lng: loc ? loc.lng : null, createdAt: Date.now(), fromCamera: !!fromCamera };
     const sess = currentSession(takenAt, loc);
-    const w = { id: uid(), placeId: sess ? sess.placeId : null, title: '辨識中的作品', status: 'pending', queued: true, thoughts: [], fav: false, createdAt: Date.now() };
+    let placeId = sess ? sess.placeId : null;
+    if (!hasAI()) {
+      // 基本模式：沒有 AI，也先依地點和日期整理
+      if (!placeId) { const geo = await reverseCity(loc); const pl = await basicPlace(geo && geo.city, loc); placeId = pl.id; }
+      setSession(placeId, loc, takenAt);
+      // 45 秒內連拍的照片，通常是同一件作品（作品、細節、說明牌）
+      const near = S.photos.filter(x => x.workId && Math.abs(x.takenAt - takenAt) < 45000).sort((a, b) => b.takenAt - a.takenAt)[0];
+      const nw = near && workOf(near.workId);
+      if (nw && nw.placeId === placeId && nw.queued && nw.status === 'pending') {
+        photo.workId = nw.id; S.photos.push(photo); await savePhoto(photo); S.last = fromCamera ? { workId: nw.id, grouped: true } : S.last;
+        throw { grouped: true };
+      }
+    }
+    const w = { id: uid(), placeId, title: hasAI() ? '辨識中的作品' : untitled(), status: 'pending', queued: true, thoughts: [], fav: false, createdAt: Date.now() };
     S.works.push(w); await saveWork(w);
     photo.workId = w.id; S.photos.push(photo); await savePhoto(photo);
+    if (fromCamera && !hasAI()) S.last = { workId: w.id };
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  } catch (e) { toast('這張照片打不開：' + e.message); }
+  } catch (e) { if (!e || !e.grouped) toast('這張照片打不開：' + (e && e.message)); }
   S.queue = S.queue.filter(x => x !== q);
   bgRender();
 }
 let QRUN = false, QTIMER = null;
 const queuedWorks = () => S.works.filter(w => w.status === 'pending' && w.queued);
 async function runQueue() {
-  if (QRUN) return; QRUN = true; clearTimeout(QTIMER);
+  if (QRUN || !hasAI()) return; QRUN = true; clearTimeout(QTIMER);
   try {
     while (true) {
       const list = queuedWorks().filter(w => !w.hold).map(w => ({ w, p: photosOf(w.id)[0] })).filter(x => x.p && !x.p.broken).sort((a, b) => a.p.takenAt - b.p.takenAt);
@@ -666,16 +697,27 @@ async function runQueue() {
       }
       // 辨識成功：拿掉暫時的作品，照片依 AI 結果收進正確的地點和作品
       const prevLast = S.last;
+      const others = photosOf(w.id).filter(x => x.id !== p.id);
       S.works = S.works.filter(x => x.id !== w.id); await DB.del('works', w.id);
       S.photos = S.photos.filter(x => x.id !== p.id); p.workId = null;
       await integrate(p, r, { sess, loc, geo, takenAt: p.takenAt });
+      if (others.length) {
+        let target = p.workId && workOf(p.workId);
+        if (!target) { target = { ...w, title: hasAI() ? '辨識中的作品' : w.title }; S.works.push(target); await saveWork(target); }
+        for (const o of others) { o.workId = target.id; await savePhoto(o); }
+      }
+      if (w.userEdited && p.workId) { const t = workOf(p.workId); if (t) { Object.assign(t, { title: w.title, titleOriginal: w.titleOriginal || t.titleOriginal, artist: w.artist || t.artist, artistOriginal: w.artistOriginal || t.artistOriginal, userEdited: true }); await saveWork(t); } }
       // 等待辨識時留下的感想、愛心，跟著照片搬到正式的作品
       const nw = p.workId && workOf(p.workId);
       if (nw && ((w.thoughts || []).length || w.fav)) { nw.thoughts = [...(w.thoughts || []), ...(nw.thoughts || [])]; nw.fav = nw.fav || w.fav; await saveWork(nw); }
       if (!p.fromCamera) S.last = prevLast;
       if (S.route.name === 'work' && S.route.p.id === w.id && p.workId) { S.route = { name: 'work', p: { id: p.workId } }; }
     }
-  } finally { QRUN = false; S.working = null; bgRender(); }
+  } finally {
+    QRUN = false; S.working = null;
+    for (const pl of [...S.places]) if (!worksAt(pl.id).length && !S.photos.some(p => p.placeId === pl.id)) { S.places = S.places.filter(x => x.id !== pl.id); await DB.del('places', pl.id); if (S.session && S.session.placeId === pl.id) S.session = null; }
+    bgRender();
+  }
 }
 async function integrate(photo, r, ctx) {
   const { sess, loc, geo, takenAt, err } = ctx;
@@ -719,7 +761,7 @@ async function integrate(photo, r, ctx) {
 }
 async function handleFiles(files, fromCamera) {
   const arr = [...files]; if (!arr.length) return;
-  if (!fromCamera) toast(arr.length > 1 ? `收到 ${arr.length} 張照片，正在背景辨識。可以先去看別的，關掉 app 也不會遺失。` : '收到照片，正在背景辨識。', 4500);
+  if (!fromCamera) toast(!hasAI() ? tt(`Got ${arr.length} photo(s). Sorting them by place and date.`, `收到 ${arr.length} 張照片，正在依地點和日期整理。`) : arr.length > 1 ? `收到 ${arr.length} 張照片，正在背景辨識。可以先去看別的，關掉 app 也不會遺失。` : '收到照片，正在背景辨識。', 4500);
   for (const f of arr) await processFile(f, fromCamera);
   runQueue();
 }
@@ -942,6 +984,7 @@ function openViewer(ps, start) {
   show();
 }
 const ACT = {
+  goAI: () => { go('settings'); setTimeout(() => { const e = $('#aiSec'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 80); },
   snap: () => snap(),
   checkUpdate: async () => {
     if (!navigator.onLine) { toast('目前沒有網路，連上網路後再檢查更新。'); return; } toast('正在檢查更新…');
@@ -964,7 +1007,7 @@ const ACT = {
   fav: async () => { const w = workOf(S.route.p.id); w.fav = !w.fav; await saveWork(w); render(); },
   showLong: () => { S.ui.showLong = !S.ui.showLong; render(); },
   editInfo: () => { S.ui.editInfo = !S.ui.editInfo; render(); },
-  saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, titleOriginal: $('#eiTo').value.trim(), artist: $('#eiA').value.trim(), artistOriginal: $('#eiAo').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); if (w.status === 'pending' && w.title !== '待辨識的作品') w.status = 'ready'; S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
+  saveInfo: async () => { const w = workOf(S.route.p.id); Object.assign(w, { title: $('#eiT').value.trim() || w.title, titleOriginal: $('#eiTo').value.trim(), artist: $('#eiA').value.trim(), artistOriginal: $('#eiAo').value.trim(), year: $('#eiY').value.trim(), medium: $('#eiM').value.trim(), userEdited: true, confidence: 'high' }); S.ui.editInfo = false; await saveWork(w); toast('已更新。'); render(); },
   reanalyze: () => { const w = workOf(S.route.p.id); if (!w) return; if (w.queued && w.status === 'pending') { w.hold = false; toast('排進辨識佇列了。'); runQueue(); return; } if (!S.ui.busy[w.id]) reanalyze(w, w.status === 'pending'); },
   retryAll: () => retryPending(),
   cleanBroken: async () => {
@@ -1038,7 +1081,7 @@ const ACT = {
     const v = $('#keyIn').value.trim(); if (!v) { S.ui.obMsg = '請先貼上金鑰。'; render(); return; }
     S.settings.keys = { ...S.settings.keys, [S.settings.provider]: v }; await saveSettings();
     S.ui.busy.key = true; S.ui.obMsg = ''; render();
-    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; queuedWorks().forEach(w => { w.hold = false; }); retryPending(); }
+    try { await AI.testKey(S.settings); S.ui.obMsg = '成功！金鑰可以使用，已經存好了。'; queuedWorks().forEach(w => { w.hold = false; }); const nq = queuedWorks().length; if (nq && S.settings.onboarded) toast(tt(`AI is on. Organizing your ${nq} photos now.`, `AI 已開啟，正在整理你的 ${nq} 張照片。`), 4500); retryPending(); }
     catch (e) { S.ui.obMsg = e.message; }
     delete S.ui.busy.key; render();
   },
@@ -1097,6 +1140,7 @@ async function loadAll() {
     }
   }
   S.session = await DB.getKV('session', null);
+  if (!Object.values(S.settings.keys || {}).some(Boolean)) S.works.forEach(w => { if (w.queued && w.status === 'pending' && (w.title === '辨識中的作品' || w.title === '待辨識的作品')) w.title = untitled(); });
   await mergeDuplicatePlaces(); if (S.session) await DB.setKV('session', S.session); S.dna = await DB.getKV('dna', null); S.artist = await DB.getKV('artist', {}) || {};
   let av = await DB.getKV('avatar', null); if (av instanceof ArrayBuffer) av = new Blob([av], { type: 'image/jpeg' }); else if (av) { try { await av.slice(0, 8).arrayBuffer(); } catch (e) { av = null; } } if (av) { if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(av); }
   URLS.forEach(u => URL.revokeObjectURL(u)); URLS.clear();

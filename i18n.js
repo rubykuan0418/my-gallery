@@ -17,7 +17,7 @@ const I18N = (() => {
     '可以先去看別的；關掉 app 也不會遺失，下次打開會接著辨識。': 'Feel free to look around. Nothing is lost if you close the app; it continues next time.',
     '這是舊版在 iPhone 上存檔的問題，新版已經修好。手機相簿裡的原圖都還在，可以重新匯入。': 'This was a saving issue in an earlier version and is now fixed. The originals are still in your Photos, so you can import them again.',
     '清除遺失的照片': 'Remove missing photos', '再試一次': 'Try again', '待辨識': 'Waiting', '辨識中…': 'Recognizing…', '辨識中': 'Recognizing',
-    '辨識中的作品': 'Recognizing…', '待辨識的作品': 'Not recognized yet', '新的作品': 'New work', '作者不明': 'Unknown artist', '複製品': 'Reproduction', 'AI 推測': 'AI guess',
+    '辨識中的作品': 'Recognizing…', '未命名作品': 'Untitled', '某個地方': 'Somewhere', '待辨識的作品': 'Not recognized yet', '新的作品': 'New work', '作者不明': 'Unknown artist', '複製品': 'Reproduction', 'AI 推測': 'AI guess',
     // 地點頁
     '地點名稱': 'Place name', '名稱不對？修改': 'Wrong name? Edit', '次': 'visits', '件作品': 'works', '張照片': 'photos',
     '紀錄・最近的在上面': 'Visits · newest first',
@@ -153,7 +153,7 @@ const I18N = (() => {
     [/(\d+) 件作品/g, (m, n) => P(n, 'work', 'works')], [/(\d+) 張照片/g, (m, n) => P(n, 'photo', 'photos')],
     [/(\d+) 個地點/g, (m, n) => P(n, 'place', 'places')], [/(\d+) 張/g, (m, n) => P(n, 'photo', 'photos')], [/(\d+) 件/g, (m, n) => P(n, 'work', 'works')],
     [/(\d+) 筆/g, (m, n) => P(n, 'note', 'notes')],
-    [/街頭/g, () => ' Streets'], [/作者不明/g, () => 'Unknown artist'], [/待辨識/g, () => 'Not recognized yet'], [/・最喜歡/g, () => ' · favorite'], [/・/g, () => ' · '],
+    [/街頭/g, () => ' Streets'], [/未命名作品/g, () => 'Untitled'], [/作者不明/g, () => 'Unknown artist'], [/待辨識/g, () => 'Not recognized yet'], [/・最喜歡/g, () => ' · favorite'], [/・/g, () => ' · '],
     [/AI 解說 · /g, () => 'AI notes · '], [/ · 已用你拍的說明牌校正/g, () => ' · checked against your label photo'], [/作品 ·/g, () => 'Artwork ·']
   ];
   function L(s) { if (lang === 'zh') return String(s).replace(/^type:/, ''); return D[s] ?? String(s).replace(/^type:/, ''); }
