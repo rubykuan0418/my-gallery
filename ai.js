@@ -54,6 +54,10 @@ const AI = (() => {
     if (opts.audioB64) order = order.filter(k => PROVIDERS[k].audio && keys[k]);
     if (opts.noFallback) order = [main];
     if (!order.length) { const e = new Error(opts.audioB64 ? '語音轉文字需要 Gemini 金鑰' : '還沒有設定 AI 金鑰'); e.code = 'nokey'; throw e; }
+    if (settings.lang === 'en') {
+      opts = { ...opts, system: opts.system === SYS ? SYS_EN : opts.system,
+        text: opts.text + (opts.audioB64 ? '\n\nTranscribe exactly what is said, in the language spoken.' : '\n\nLANGUAGE RULE: The user reads English. Write every free-text value (titles, names, museum, city, medium, descriptions, notes, tips, labels, DNA words) in natural, warm English. Use English names for titles, artists, museums and cities, and put original-language names in the *Original fields. Keep JSON keys unchanged, and keep enum values (photoType, subjects, aspect, confidence) EXACTLY as the listed Chinese options.') };
+    }
     let lastErr;
     for (let i = 0; i < order.length; i++) {
       try { const r = await callOne(settings, order[i], { ...opts, hasBackup: i < order.length - 1 }); state.lastProvider = order[i]; return ZH.deep(r); }
@@ -126,6 +130,7 @@ const AI = (() => {
     return json ? parseJSON(t) : t;
   }
 
+  const SYS_EN = 'You are a warm, knowledgeable museum guide and art historian. Answer in clear, natural English, gently and without lecturing. Never make things up when unsure.';
   const SYS = '你是一位溫暖、知識豐富的美術館導覽員與藝術史研究者。一律使用台灣繁體中文與台灣慣用譯名回答（例如：佛羅倫斯、達文西、波提且利、梵谷、林布蘭、維梅爾、杜勒、德勒斯登、義大利、美術館），絕對不要使用簡體字或中國大陸的譯名與用語。中文譯名要完整翻成中文，不要中英混雜（例如 Hampstead 寫「漢普斯特德」）；人名只寫姓氏或常用譯名（例如「透納」，不要寫「J・M・W・透納」），美術館用台灣常用名稱（例如 Tate Britain 是「泰特不列顛美術館」）。語氣溫和、不說教。不確定的事情絕對不要編造。';
 
   function analyzePhoto(settings, { imageB64, takenAt, placeHint, cityHint, candidates }) {

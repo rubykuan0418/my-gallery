@@ -142,3 +142,11 @@ body.camlive .cam{background:linear-gradient(rgba(20,17,15,.55),transparent 22%,
 .navav{display:block;height:30px;margin-bottom:1px}.navav .ring{margin:0 auto}
 .nav .on .navav .ring{box-shadow:0 0 0 2px var(--primary)}
 .tabs .tab{padding-left:4px;padding-right:4px}
+
+.langsw{display:flex;gap:2px;padding:3px;background:#F4EDE2;border-radius:22px 14px 24px 12px}
+.lang{min-height:36px;min-width:52px;padding:0 12px;border:0;border-radius:18px 12px 20px 10px;background:transparent;font:inherit;font-size:14px;color:var(--ink2);cursor:pointer}
+.lang.on{background:var(--card);color:var(--ink);font-weight:700;box-shadow:0 2px 8px rgba(58,47,42,.08)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:4px;background:#E3D6C2}.dot.on{width:22px;background:var(--primary)}
+.beta{font-size:12px;font-weight:700;letter-spacing:.14em;padding:4px 10px;border-radius:12px 8px 13px 7px;background:var(--butter);color:var(--ink)}
+.hang{animation:hang 6s ease-in-out infinite;transform-origin:186px 40px}.hang2{animation:hang 7s ease-in-out infinite reverse;transform-origin:60px 110px}.hang3{animation:hang 8s ease-in-out infinite;transform-origin:292px 110px}
+@keyframes hang{50%{transform:rotate(-1.2deg)}}

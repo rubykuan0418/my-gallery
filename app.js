@@ -1,5 +1,6 @@
 'use strict';
 /* ============ My Gallery ============ */
+const APP_VERSION = '2026.11.09-18';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -40,7 +41,7 @@ const RAD = ['40px 18px 46px 22px', '22px 44px 20px 40px', '46px 24px 30px 50px'
 const TYPES = ['作品', '細節', '我與作品', '說明牌', '館外照', '複製品'];
 const DIMS = [['brightness', '色彩明度', '明亮', '沉穩'], ['warmth', '色彩溫度', '冷', '暖'], ['line', '線條', '流動', '幾何'], ['form', '形體', '寫實', '抽象'], ['mood', '情緒', '寧靜', '熱烈'], ['ornament', '裝飾性', '簡約', '繁複']];
 
-const DEFAULTS = { provider: 'gemini', keys: {}, models: {}, length: 'short', name: '', onboarded: false, feedback: '' };
+const DEFAULTS = { lang: 'en', provider: 'gemini', keys: {}, models: {}, length: 'short', name: '', onboarded: false, feedback: '' };
 const S = {
   settings: { ...DEFAULTS }, works: [], places: [], photos: [], route: { name: 'home', p: {} }, stack: [],
   ui: { homeView: 'place', favOnly: false, editName: false, photoIdx: 0, sheet: null, showLong: false, editInfo: false, writing: false, ob: 0, obMsg: '', busy: {}, pick: false },
@@ -124,14 +125,14 @@ function resetUi() { Object.assign(S.ui, { editThought: null, sheet: null, showL
 function ask(msg, okText = '確定', danger = true) {
   return new Promise(res => {
     const wrap = document.createElement('div');
-    wrap.innerHTML = `<div class="scrim" style="z-index:60"></div><div class="dialog" role="alertdialog" aria-modal="true"><p style="margin:0 0 16px;line-height:1.7">${esc(msg)}</p><div class="row"><button class="btn grow" data-r="0">取消</button><button class="btn solid grow" data-r="1" style="${danger ? 'background:var(--accent)' : ''}">${esc(okText)}</button></div></div>`;
+    wrap.innerHTML = `<div class="scrim" style="z-index:60"></div><div class="dialog" role="alertdialog" aria-modal="true"><p style="margin:0 0 16px;line-height:1.7">${esc(I18N.tr(msg))}</p><div class="row"><button class="btn grow" data-r="0">取消</button><button class="btn solid grow" data-r="1" style="${danger ? 'background:var(--accent)' : ''}">${esc(L(okText))}</button></div></div>`;
     document.body.appendChild(wrap);
     wrap.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (!b && !e.target.classList.contains('scrim')) return; e.stopPropagation(); wrap.remove(); res(!!(b && b.dataset.r === '1')); });
   });
 }
 let toastTimer;
 function toast(msg, ms = 3200) { S.toast = msg; renderToast(); clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = ''; renderToast(); }, ms); }
-function renderToast() { let el = $('#toast'); if (!S.toast) { if (el) el.remove(); return; } if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status'); el.onclick = () => { S.toast = ''; renderToast(); }; document.body.appendChild(el); } el.textContent = S.toast; }
+function renderToast() { let el = $('#toast'); if (!S.toast) { if (el) el.remove(); return; } if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status'); el.onclick = () => { S.toast = ''; renderToast(); }; document.body.appendChild(el); } el.textContent = I18N.tr(S.toast); }
 
 /* ---------- 畫面 ---------- */
 function nav(active) {
@@ -233,24 +234,24 @@ function viewWork() {
   const prov = AI.PROVIDERS[w.aiProvider || S.settings.provider] || AI.PROVIDERS.gemini;
   let h = `<main class="screen"><div class="topbar row" style="justify-content:space-between"><button class="back" data-act="back">${I.back}${esc(pl ? pl.name : '返回')}</button>
   <button class="ibtn heart ${w.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!w.fav}" aria-label="${w.fav ? '已加入最喜歡，點一下取消' : '加入最喜歡'}" style="${w.fav ? 'background:var(--pink)' : ''}">${I.heart}</button></div>
-  <div style="position:relative;margin-top:8px"><div class="frame" style="padding:8px">${p ? `<button class="hit" data-act="zoom" aria-label="放大看照片" style="display:block;width:100%"><img src="${purl(p, 'full')}" alt="${esc(w.title)}，${esc(p.type)}" style="${p.w && p.h ? `aspect-ratio:${p.w}/${p.h};` : ''}width:100%;height:auto;max-height:68vh;object-fit:contain;background:#EFE8DC"></button>` : ''}</div>
+  <div style="position:relative;margin-top:8px"><div class="frame" style="padding:8px">${p ? `<button class="hit" data-act="zoom" aria-label="放大看照片" style="display:block;width:100%"><img src="${purl(p, 'full')}" alt="${esc(w.title)}, ${esc(L('type:' + p.type))}" style="${p.w && p.h ? `aspect-ratio:${p.w}/${p.h};` : ''}width:100%;height:auto;max-height:68vh;object-fit:contain;background:#EFE8DC"></button>` : ''}</div>
   ${p ? `<button class="ibtn" data-act="zoom" aria-label="放大看照片" style="position:absolute;right:16px;bottom:16px;background:rgba(255,253,248,.95)">${I.zoom}</button>` : ''}
-  ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(p.type)}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
-  <div class="row" style="margin-top:10px;overflow-x:auto;padding-bottom:2px">${ps.map((x, i) => `<button class="hit" style="width:auto;flex:none" data-act="photoIdx" data-i="${i}" aria-label="看第 ${i + 1} 張：${esc(x.type)}"><img src="${purl(x)}" alt="" style="width:50px;height:50px;object-fit:cover;display:block;border:3px solid ${i === idx ? 'var(--accent)' : 'var(--card)'};border-radius:12px 8px 14px 6px"></button>`).join('')}</div>
+  ${p ? `<span class="chip" style="position:absolute;left:18px;bottom:18px;background:rgba(255,253,248,.95)"><strong>${esc(L('type:' + p.type))}</strong>・${idx + 1} / ${ps.length} 張</span>` : ''}</div>
+  <div class="row" style="margin-top:10px;overflow-x:auto;padding-bottom:2px">${ps.map((x, i) => `<button class="hit" style="width:auto;flex:none" data-act="photoIdx" data-i="${i}" aria-label="看第 ${i + 1} 張：${esc(L('type:' + x.type))}"><img src="${purl(x)}" alt="" style="width:50px;height:50px;object-fit:cover;display:block;border:3px solid ${i === idx ? 'var(--accent)' : 'var(--card)'};border-radius:12px 8px 14px 6px"></button>`).join('')}</div>
   <div class="row wrap" style="margin-top:8px"><button class="btn white" data-act="sheet" data-v="menu" style="font-size:14px">${I.sort}整理這張照片</button><button class="btn white" data-act="removePhoto" style="font-size:14px">${I.trash}刪除這張</button></div>`;
   if (w.status === 'pending') h += `<div class="card" style="margin-top:18px;background:var(--butter)"><strong>${S.working === w.id ? '正在辨識…' : '這張還沒辨識'}</strong><p style="margin:4px 0 10px" class="small">${esc(S.working === w.id ? '馬上就好。' : (w.error || '照片已經存好，正在排隊等待辨識。'))}</p><button class="btn white" data-act="reanalyze">${S.ui.busy[w.id] ? '<span class="spin"></span> 辨識中' : '現在辨識'}</button></div>`;
   h += `<div style="margin-top:20px">${w.isCopy ? '<span class="chip">複製品・不算進美感 DNA</span> ' : ''}${w.kind === 'street' ? '<span class="chip" style="background:var(--sage)">路上的小美好</span>' : ''}`;
   if (S.ui.editInfo) {
     h += `<div class="card" style="margin-top:10px">${[['eiT', '作品名稱（中文）', w.title], ['eiTo', '作品原文或英文名稱', w.titleOriginal], ['eiA', '藝術家（中文）', w.artist], ['eiAo', '藝術家原文或英文名字', w.artistOriginal], ['eiY', '年代', w.year], ['eiM', '媒材', w.medium]].map(([id, l, v]) => `<label class="lab" for="${id}">${l}</label><input id="${id}" class="field" value="${esc(v || '')}" style="margin-bottom:10px">`).join('')}<p class="muted tiny" style="margin:0 0 10px">存下來後，可以按「依新資料重寫解說」讓 AI 重新整理。</p><div class="row"><button class="btn grow" data-act="editInfo">取消</button><button class="btn solid grow" data-act="saveInfo">存下來</button></div></div>`;
   } else {
-    h += `<h1 class="serif" style="margin:6px 0 0;font-size:30px;line-height:1.25">${esc(w.title)}</h1>${origOf(w.title, w.titleOriginal) ? `<p class="serif" style="margin:2px 0 0;font-size:19px;color:var(--ink2);font-style:italic">${esc(w.titleOriginal)}</p>` : ''}
+    h += `<h1 class="serif usr" style="margin:6px 0 0;font-size:30px;line-height:1.25">${esc(w.title)}</h1>${origOf(w.title, w.titleOriginal) ? `<p class="serif" style="margin:2px 0 0;font-size:19px;color:var(--ink2);font-style:italic">${esc(w.titleOriginal)}</p>` : ''}
     <p style="margin:8px 0 0;font-size:17px">${artistHtml(w)}</p>
     <button class="linkbtn" data-act="editInfo">作品名稱或藝術家不對？修改</button>`;
   }
   h += `<div class="metagrid">${[['年代', w.year], ['媒材', w.medium], ['地點', pl && pl.name], ['見過 ' + dates.length + ' 次', dates.map(d => d.replace(/-/g, '.')).join('、')]].map(([a, b]) => `<div><span class="muted tiny">${a}</span><br>${esc(b || '—')}</div>`).join('')}</div></div>`;
   if (w.confidence === 'low' && w.status === 'ready') h += `<div class="card" style="margin-top:18px;background:var(--sky)"><strong>這件是 AI 的推測</strong><p class="small" style="margin:4px 0 0">AI 不太確定作品身分。補拍一張說明牌，或直接修改名稱都可以。</p></div>`;
   if (w.short) h += `<svg width="100%" height="16" viewBox="0 0 342 16" preserveAspectRatio="none" aria-hidden="true" style="display:block;margin:24px 0"><path d="M0 8h146M196 8h146" stroke="#C2A878"/><path d="M152 8c6-8 14-8 19 0 5 8 13 8 19 0" fill="none" stroke="#C2A878"/></svg>
-  <p class="sec">${w.kind === 'street' ? '關於它' : '作品解說'}</p><p style="margin:0">${esc(S.ui.showLong && w.long ? w.long : w.short)}</p>
+  <p class="sec">${w.kind === 'street' ? '關於它' : '作品解說'}</p><p class="usr" style="margin:0">${esc(S.ui.showLong && w.long ? w.long : w.short)}</p>
   <div class="row wrap">${w.long ? `<button class="linkbtn" data-act="showLong">${S.ui.showLong ? '收起' : '看完整解說'}</button>` : ''}<button class="linkbtn" data-act="reanalyze">${S.ui.busy[w.id] ? '整理中…' : '依新資料重寫解說'}</button></div>
   <p class="muted tiny" style="margin:2px 0 0">AI 解說・${esc(prov.name)}${w.labelUsed ? '・已用你拍的說明牌校正' : ''}</p>`;
   if (w.status === 'ready') {
@@ -268,7 +269,7 @@ function viewWork() {
     const editing = S.ui.editThought === t.id;
     h += `<div class="card" style="margin-top:12px;background:${['#F4E3DD', '#E3EADD', '#F7EDCF'][i % 3]}"><p class="muted small" style="margin:0">${fmtDate(ymd(t.at))}・${t.kind === 'voice' ? '語音感想' : '文字感想'}${t.edited ? '・已修改' : ''}</p>${t.kind === 'voice' && t.audio ? `<audio controls preload="none" src="${thoughtUrl(t)}" style="width:100%;margin:6px 0"></audio>` : ''}`;
     if (editing) h += `<label class="lab" for="thIn" style="margin-top:6px">修改感想</label><textarea id="thIn" class="field" rows="3">${esc(t.text || '')}</textarea><div class="row" style="margin-top:8px"><button class="btn white grow" data-act="editThought" data-id="">取消</button><button class="btn solid grow" data-act="saveThought" data-id="${t.id}">存下來</button></div>`;
-    else h += `<p style="margin:0">${esc(t.text || '')}</p><div class="row" style="margin-top:6px;gap:4px"><button class="linkbtn" data-act="editThought" data-id="${t.id}">修改</button><button class="linkbtn" data-act="deleteThought" data-id="${t.id}" style="color:var(--ink2)">刪除</button></div>`;
+    else h += `<p class="usr" style="margin:0">${esc(t.text || '')}</p><div class="row" style="margin-top:6px;gap:4px"><button class="linkbtn" data-act="editThought" data-id="${t.id}">修改</button><button class="linkbtn" data-act="deleteThought" data-id="${t.id}" style="color:var(--ink2)">刪除</button></div>`;
     h += `</div>`;
   });
   if (S.ui.writing) h += `<div style="margin-top:14px"><label class="lab" for="noteIn">想留下什麼？</label><textarea id="noteIn" class="field" rows="3" placeholder="寫一句就好"></textarea><div class="row" style="margin-top:10px"><button class="btn grow" data-act="write">取消</button><button class="btn solid grow" data-act="saveNote">存下來</button></div></div>`;
@@ -281,7 +282,7 @@ function viewWork() {
 const ASPECT_BG = { '用色': 'var(--pink)', '線條': 'var(--sky)', '構圖': 'var(--butter)', '光線': 'var(--butter)', '筆觸': 'var(--sage)', '細節': 'var(--sky)', '材質': 'var(--sage)', '象徵': 'var(--pink)', '歷史背景': 'var(--sand)', '畫家心境': 'var(--pink)' };
 function lookForHtml(list, compact) {
   const items = compact ? list.slice(0, 2) : list;
-  return `<div style="margin-top:${compact ? 12 : 22}px;${compact ? '' : 'background:var(--card);border-radius:30px 16px 34px 14px;padding:16px 18px 6px'}"><p class="sec" style="margin:0 0 10px">${I.eye} 留心看這裡</p>${items.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px"><span class="chip" style="flex:none;min-width:68px;justify-content:center;text-align:center;background:${ASPECT_BG[x.aspect] || 'var(--sand)'};margin-top:1px">${esc(x.aspect || '細節')}</span><span style="line-height:1.65">${esc(x.text)}</span></div>`).join('')}</div>`;
+  return `<div style="margin-top:${compact ? 12 : 22}px;${compact ? '' : 'background:var(--card);border-radius:30px 16px 34px 14px;padding:16px 18px 6px'}"><p class="sec" style="margin:0 0 10px">${I.eye} 留心看這裡</p>${items.map(x => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px"><span class="chip" style="flex:none;min-width:68px;justify-content:center;text-align:center;background:${ASPECT_BG[x.aspect] || 'var(--sand)'};margin-top:1px">${esc(x.aspect || '細節')}</span><span class="usr" style="line-height:1.65">${esc(x.text)}</span></div>`).join('')}</div>`;
 }
 function artistCard(ad, w) {
   return `<div style="margin-top:28px;background:var(--card);border-radius:36px 18px 40px 16px;overflow:hidden"><div style="background:var(--butter);padding:18px 20px 14px;position:relative;overflow:hidden"><div style="position:absolute;right:-8px;top:-12px">${I.blob('#EFD9A0', 76)}</div>
@@ -296,11 +297,11 @@ const AUDIO_URLS = new Map();
 function thoughtUrl(t) { if (!AUDIO_URLS.has(t.id)) AUDIO_URLS.set(t.id, URL.createObjectURL(t.audio)); return AUDIO_URLS.get(t.id); }
 function sheetHtml(w, p, ps) {
   let h = `<button class="scrim" data-act="sheet" data-v="" aria-label="關閉"></button><div class="sheet" role="dialog" aria-label="整理這張照片">
-  <div class="row" style="margin-bottom:14px">${p ? `<img src="${purl(p)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:14px 8px 16px 6px">` : ''}<div style="line-height:1.5"><strong>整理這張照片</strong><br><span class="muted small">目前在《${esc(w.title)}》・${esc(p ? p.type : '')}</span></div></div>`;
+  <div class="row" style="margin-bottom:14px">${p ? `<img src="${purl(p)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:14px 8px 16px 6px">` : ''}<div style="line-height:1.5"><strong>整理這張照片</strong><br><span class="muted small">目前在《${esc(w.title)}》・${esc(p ? L('type:' + p.type) : '')}</span></div></div>`;
   if (S.ui.sheet === 'menu') {
     h += `<div style="display:flex;flex-direction:column;gap:8px">${[['sheet', 'move', '移到另一件作品（拍到別的作品了）'], ['sheet', 'type', '改照片類型（作品、細節、說明牌⋯）'], ['split', '', '獨立成新的一件作品'], ['makeFirst', '', '設成這件作品的第一張（代表照片）'], ['makeCover', '', '設成這個地點的封面'], ['removePhoto', '', '刪除這張照片']].map(([a, v, l]) => `<button class="btn" data-act="${a}" data-v="${v}" style="justify-content:flex-start">${l}</button>`).join('')}<button class="btn ghost" data-act="sheet" data-v="">取消</button></div>`;
   } else if (S.ui.sheet === 'type') {
-    h += `<p style="margin:0 0 8px">這張照片是：</p><div class="row wrap">${TYPES.map(t => `<button class="opt ${p && p.type === t ? 'on' : ''}" data-act="setType" data-v="${t}">${t}</button>`).join('')}</div><button class="btn ghost block" data-act="sheet" data-v="menu" style="margin-top:14px">返回</button>`;
+    h += `<p style="margin:0 0 8px">這張照片是：</p><div class="row wrap">${TYPES.map(t => `<button class="opt ${p && p.type === t ? 'on' : ''}" data-act="setType" data-v="${t}">${L('type:' + t)}</button>`).join('')}</div><button class="btn ghost block" data-act="sheet" data-v="menu" style="margin-top:14px">返回</button>`;
   } else if (S.ui.sheet === 'move') {
     const targets = worksAt(w.placeId).filter(x => x.id !== w.id).sort((a, b) => lastAt(b) - lastAt(a));
     h += `<p style="margin:0 0 8px">要移到哪一件作品？<span class="muted small">（同一個地點）</span></p><div style="display:flex;flex-direction:column;gap:8px">`;
@@ -413,29 +414,38 @@ function viewDna() {
   if ((d.closest || []).length) h += `<p class="sec" style="margin-top:28px">你收藏裡最像你的藝術家</p><div style="display:flex;flex-direction:column;gap:10px">${d.closest.map((a, i) => `<div class="card row" style="border-radius:${RAD[i]}"><span class="serif ring" style="width:42px;height:42px;background:${PASTEL[i]};font-size:20px;flex:none;border-radius:24px 16px 26px 14px">${i + 1}</span><span class="grow" style="line-height:1.5"><strong>${esc(a.artist)}</strong>${a.artistOriginal ? ` <span class="orig-i">${esc(a.artistOriginal)}</span>` : ''}<br><span class="muted small">${esc(a.why)}</span></span></div>`).join('')}</div>`;
   if ((d.recs || []).length) h += `<div style="margin:30px -22px 0;padding:26px 22px 28px;background:var(--sky);border-radius:48px 48px 0 0"><p class="sec" style="margin:0 0 4px">策展人推薦</p><h2 class="serif" style="margin:0 0 14px;font-size:24px;line-height:1.35">你可能也會喜歡，<br>但還沒認識的藝術家</h2><div style="display:flex;flex-direction:column;gap:12px">${d.recs.map((r, i) => `<div class="card" style="border-radius:${RAD[i]}"><strong style="font-size:18px">${esc(r.artist)}</strong> <span class="serif muted">${esc(r.artistOriginal || '')}</span><p style="margin:6px 0 0"><span class="muted">為什麼推薦：</span>${esc(r.why)}</p><p class="small row" style="margin:6px 0 0;align-items:flex-start;gap:6px">${I.pin}<span>${esc(r.where || '')}</span></p></div>`).join('')}</div></div>`;
   if (d.surprise && d.surprise.title) h += `<div class="card" style="margin-top:22px;background:var(--pink)"><p class="sec" style="margin:0">讓你意外的收藏</p><strong>${esc(d.surprise.title)}</strong><p style="margin:2px 0 0">${esc(d.surprise.text)}</p></div>`;
-  h += `<p class="muted small" style="margin-top:16px">在作品頁點「最喜歡」，策展人會更了解你。</p><button class="btn solid block" data-act="shareDna" style="margin-top:12px">${I.dl}存成圖片分享</button></main>${nav('dna')}`;
+  h += `<p class="muted small" style="margin-top:16px">在作品頁點「最喜歡」，策展人會更了解你。</p><button class="btn solid block" data-act="shareDna" style="margin-top:12px">${I.dl}存成 3 張圖片分享</button></main>${nav('dna')}`;
   return h;
 }
-function dimWord(k, v) { const d = DIMS.find(x => x[0] === k); if (!d || v == null) return '—'; if (v < 1.8) return '很' + d[2]; if (v < 2.7) return '偏' + d[2]; if (v <= 3.3) return '介於兩者之間'; if (v <= 4.2) return '偏' + d[3]; return '很' + d[3]; }
+const DIM_EN = { brightness: ['bright', 'deep'], warmth: ['cool', 'warm'], line: ['flowing', 'geometric'], form: ['realistic', 'abstract'], mood: ['calm', 'intense'], ornament: ['simple', 'ornate'] };
+function dimWord(k, v) {
+  if (I18N.lang === 'en') { const e = DIM_EN[k]; if (!e || v == null) return '—'; if (v < 1.8) return 'Very ' + e[0]; if (v < 2.7) return 'Leaning ' + e[0]; if (v <= 3.3) return 'Balanced'; if (v <= 4.2) return 'Leaning ' + e[1]; return 'Very ' + e[1]; } const d = DIMS.find(x => x[0] === k); if (!d || v == null) return '—'; if (v < 1.8) return '很' + d[2]; if (v < 2.7) return '偏' + d[2]; if (v <= 3.3) return '介於兩者之間'; if (v <= 4.2) return '偏' + d[3]; return '很' + d[3]; }
 
 function keyGuide(p) {
   const G = {
-    gemini: { url: 'https://aistudio.google.com/apikey', site: 'Google AI Studio', steps: ['用你的 Google 帳號登入（第一次使用要同意服務條款）', '按「Create API key」（建立 API 金鑰）', '複製那串金鑰（通常是「AQ.」開頭，舊的是「AIza」開頭），回來貼在下面'], note: '不用綁信用卡也能先用，每天有免費次數。依 Google 規定，免費額度的資料可能被用來改善他們的服務；在意的話可以在 AI Studio 開啟付費。注意：Gemini app 的訂閱和 API 是分開的。' },
-    claude: { url: 'https://console.anthropic.com/settings/keys', site: 'Claude Console', steps: ['登入或註冊，先在 Billing 儲值一點額度（和 Claude 訂閱分開計費）', '按「Create Key」', '複製以「sk-ant-」開頭的金鑰，回來貼在下面'], note: 'Claude 目前無法把語音感想轉成文字，錄音會保留聲音。' },
-    openai: { url: 'https://platform.openai.com/api-keys', site: 'OpenAI Platform', steps: ['登入，先在 Billing 設定付款（和 ChatGPT 訂閱分開計費）', '按「Create new secret key」', '複製以「sk-」開頭的金鑰，回來貼在下面'], note: 'ChatGPT 的 API 在這裡無法把語音感想轉成文字，錄音會保留聲音。' }
+    gemini: { url: 'https://aistudio.google.com/apikey', site: 'Google AI Studio',
+      steps: [tt('Sign in with your Google account and accept the terms', '用你的 Google 帳號登入，同意服務條款'), tt('Tap "Create API key" and choose or create a project', '按「Create API key」，選一個專案或建立新專案'), tt('Copy the key (it starts with "AQ.", older keys with "AIza") and paste it below', '複製金鑰（通常是「AQ.」開頭，舊的是「AIza」開頭），回來貼在下面')],
+      note: tt('Free to start, no credit card needed. On the free tier, Google may use your data to improve its services. A Gemini app subscription is separate from the API.', '不用綁信用卡就能先用。免費額度的資料可能被 Google 用來改善服務。Gemini app 的訂閱和 API 是分開的。') },
+    claude: { url: 'https://console.anthropic.com/settings/keys', site: 'Claude Console',
+      steps: [tt('Sign in and add a little credit under Billing (separate from a Claude subscription)', '登入後在 Billing 加一點額度（和 Claude 訂閱分開計費）'), tt('Go to API Keys and tap "Create Key"', '到 API Keys 按「Create Key」'), tt('Copy the key (it starts with "sk-ant-") and paste it below', '複製金鑰（「sk-ant-」開頭），回來貼在下面')],
+      note: tt('Pay as you go. Voice notes can only be turned into text with a Gemini key.', '用多少付多少。語音感想要有 Gemini 金鑰才能轉成文字。') },
+    openai: { url: 'https://platform.openai.com/api-keys', site: 'OpenAI Platform',
+      steps: [tt('Sign in and set up payment under Billing (separate from ChatGPT Plus)', '登入後在 Billing 設定付款（和 ChatGPT 訂閱分開計費）'), tt('Go to API keys and tap "Create new secret key"', '到 API keys 按「Create new secret key」'), tt('Copy the key (it starts with "sk-") and paste it below', '複製金鑰（「sk-」開頭），回來貼在下面')],
+      note: tt('Pay as you go. Voice notes can only be turned into text with a Gemini key.', '用多少付多少。語音感想要有 Gemini 金鑰才能轉成文字。') }
   }[p];
-  return `<ol class="steps" style="margin-top:14px"><li>打開 <a href="${G.url}" target="_blank" rel="noopener">${G.site}</a>（會開新視窗）</li>${G.steps.map(s => `<li>${s}</li>`).join('')}</ol><p class="note">${G.note}<br>你的金鑰只存在這支手機裡，不會傳給任何人；只有在辨識照片時，才會直接送到你選的 AI。</p>`;
+  return `<ol class="steps" style="margin-top:14px"><li>${tt('Open', '打開')} <a href="${G.url}" target="_blank" rel="noopener">${G.site}</a></li>${G.steps.map(x => `<li>${x}</li>`).join('')}</ol><p class="note">${G.note}<br>${tt('Your key stays on this phone and is only sent directly to the AI you choose.', '金鑰只存在這支手機裡，只會直接送到你選的 AI。')}</p>`;
 }
 function aiSetupHtml(context) {
   const p = S.settings.provider;
   return `<div class="row wrap" role="radiogroup" aria-label="選擇 AI">${Object.entries(AI.PROVIDERS).map(([k, v]) => `<button class="opt ${p === k ? 'on' : ''}" role="radio" aria-checked="${p === k}" data-act="provider" data-v="${k}">${v.name}${k === 'gemini' ? '（推薦）' : ''}</button>`).join('')}</div>
-  ${keyGuide(p)}<label class="lab" for="keyIn" style="margin-top:12px">${AI.PROVIDERS[p].name} 金鑰（${AI.PROVIDERS[p].keyHint}）</label><input id="keyIn" class="field" type="password" autocomplete="off" value="${esc((S.settings.keys || {})[p] || '')}" placeholder="貼上你的金鑰">
+  ${keyGuide(p)}<label class="lab" for="keyIn" style="margin-top:12px">${AI.PROVIDERS[p].name} ${tt('key', '金鑰')}</label><input id="keyIn" class="field" type="password" autocomplete="off" value="${esc((S.settings.keys || {})[p] || '')}" placeholder="貼上你的金鑰">
   <button class="btn solid block" data-act="testKey" data-ctx="${context}" style="margin-top:10px">${S.ui.busy.key ? '<span class="spin"></span> 測試中…' : '測試並儲存'}</button>${S.ui.obMsg ? `<p class="small" role="status" style="margin:8px 0 0">${esc(S.ui.obMsg)}</p>` : ''}`;
 }
 
 function viewSettings() {
   const p = S.settings.provider;
   return `<main class="screen"><div class="topbar"><button class="back" data-act="back">${I.back}返回</button></div><h1 class="serif" style="margin:6px 0 18px;font-size:32px">設定</h1>
+  <p class="sec">${tt('Language', '語言')}</p>${langSwitch()}<p class="muted tiny" style="margin:6px 0 18px">${tt('New notes from the AI will be written in this language.', 'AI 之後寫的解說會用這個語言。')}</p>
   <p class="sec">解說用的 AI</p>${aiSetupHtml('settings')}
   <div class="card" style="margin-top:14px;background:var(--sage)"><strong>自動備援</strong><p class="small" style="margin:4px 0 8px">兩把以上的金鑰都設定好，主要的 AI 忙碌、太慢或連不上時，會自動改用另一個，不用自己切換。</p>
   <div class="row wrap">${Object.entries(AI.PROVIDERS).map(([k, v]) => `<span class="chip" style="background:var(--card)">${v.name}：${(S.settings.keys || {})[k] ? (k === S.settings.provider ? '主要' : '備用') : '未設定'}</span>`).join('')}</div>
@@ -446,19 +456,45 @@ function viewSettings() {
   <div class="row wrap"><button class="btn solid" data-act="exportData">${S.ui.busy.export ? '<span class="spin"></span> 匯出中…' : '匯出備份'}</button><button class="btn" data-act="importData">匯入備份</button></div><p class="muted tiny" id="storageInfo" style="margin:8px 0 0"></p>
   <p class="sec" style="margin-top:26px">加到主畫面</p><p class="small" style="margin:0">iPhone：用 Safari 打開，按下方的「分享」，選「加入主畫面」。Android：Chrome 選單裡選「安裝應用程式」。</p>
   <p class="sec" style="margin-top:26px">隱私</p><div class="card" style="background:var(--sage)">照片和資料都存在你的手機裡，這個 app 沒有伺服器。只有在辨識照片、轉錄語音、整理美感 DNA 時，才會把需要的內容直接送給你選的 AI。地點名稱會向 OpenStreetMap 查詢。</div>
+  <p class="sec" style="margin-top:26px">版本</p><div class="row wrap"><span class="small">目前版本 ${APP_VERSION}</span><button class="btn white" data-act="checkUpdate" style="min-height:44px;font-size:14px">${I.refresh}檢查更新</button></div>
   <button class="linkbtn" data-act="resetAll" style="color:var(--accent);margin-top:20px">清除這支手機上的所有資料</button></main>${nav('home')}`;
 }
 
+const WALL_ART = `<svg role="img" aria-label="${'%ART%'}" width="100%" height="260" viewBox="0 0 342 300" style="display:block;margin:0 auto;max-width:342px">
+<line x1="0" y1="286" x2="342" y2="286" stroke="#C2A878"/>
+<g class="hang"><path d="M120 270V112a66 66 0 0 1 132 0v158z" fill="#FFFDF8" stroke="#C2A878" stroke-width="1.5"/><path d="M130 262V114a56 56 0 0 1 112 0v148z" fill="#F7EDCF"/><path d="M136 262c10-40 46-52 64-30 14 18 30 6 36-14v44z" fill="#B9CBB0"/><circle cx="200" cy="120" r="24" fill="#E8BFB3"/><path d="M150 150c12-26 10-50 30-62-6 24 8 34-2 58-6 14-20 16-28 4z" fill="#4F6652" opacity=".85"/><path d="M214 196l6 16 17-1-13 10 6 16-16-9-13 11 3-17-14-10 17-1z" fill="#C9A85A"/></g>
+<g class="hang2"><rect x="18" y="128" width="84" height="104" fill="#FFFDF8" stroke="#C2A878" stroke-width="1.5"/><rect x="26" y="136" width="68" height="88" fill="#E1E8F0"/><path d="M60 146c6 8-3 12 4 18 9-4 13 3 8 8-6 3-10 1-10 8 7-1 13 6 6 10-6 3-9-1-12 4 6 2 8 9 1 10-4 0-6-4-9-1 1 8-3 13-7 13-3-7 1-12-4-16-6 3-12-3-6-7 4-3 7 0 9-6-6 0-10-6-4-10 4-3 7 1 9-4-4-3-4-10 1-10 3 0 4 3 6 0-1-6 3-10 8-14z" fill="#9C5B55" opacity=".8"/></g>
+<g class="hang3"><ellipse cx="292" cy="170" rx="34" ry="44" fill="#FFFDF8" stroke="#C2A878" stroke-width="1.5"/><ellipse cx="292" cy="170" rx="26" ry="35" fill="#F4E3DD"/><path d="M280 158c10-6 22 0 22 12s-10 20-20 16c8-2 12-8 10-14s-8-10-12-14z" fill="#3E5A7A" opacity=".85"/></g>
+<path d="M30 268c10-18 30-18 40 0" fill="none" stroke="#C2A878"/><circle cx="316" cy="96" r="5" fill="#EBCF8A"/><circle cx="40" cy="96" r="3" fill="#E8BFB3"/></svg>`;
+function langSwitch() {
+  const en = I18N.lang === 'en';
+  return `<div role="radiogroup" aria-label="Language / 語言" class="langsw"><button class="lang ${en ? 'on' : ''}" role="radio" aria-checked="${en}" data-act="setLang" data-v="en">EN</button><button class="lang ${en ? '' : 'on'}" role="radio" aria-checked="${!en}" data-act="setLang" data-v="zh">中文</button></div>`;
+}
 function viewOnboarding() {
   const st = S.ui.ob;
-  let h = `<main class="screen nonav" style="padding-top:calc(48px + var(--safe-t))"><div style="position:absolute;right:-10px;top:10px">${I.leaf('#EBCDC2', 100)}</div>`;
-  if (st === 0) h += `<p class="sec">歡迎</p><h1 class="serif" style="font-size:36px;line-height:1.2;margin:0">My Gallery</h1>${I.flourish}<p>把每次看展、路上遇見的美，自動整理成你自己的畫廊。</p>
-  <div style="display:flex;flex-direction:column;gap:10px;margin:18px 0">${[['在美術館或路上，拍下來就好', 'AI 會判斷作品、地點和日期，自動整理。'], ['邊看邊理解', '拍完立刻有簡短解說，想聽更多再點開。'], ['慢慢認識自己的美感', '收藏越多，策展人越懂你喜歡什麼。']].map(([a, b], i) => `<div class="card" style="background:${PASTEL[i]};border-radius:${RAD[i]}"><strong>${a}</strong><br><span class="small">${b}</span></div>`).join('')}</div>
-  <p class="muted small">照片和資料只存在你的手機裡。</p><button class="btn solid block" data-act="ob" data-v="1">開始</button>`;
-  if (st === 1) h += `<p class="sec">1 / 3</p><h1 class="serif" style="font-size:30px;margin:0 0 14px">怎麼稱呼你？</h1><label class="lab" for="obName">你的名字</label><input id="obName" class="field" maxlength="12" value="${esc(S.settings.name)}" placeholder="例如：Ruby"><p class="muted small">畫廊會叫做「名字的畫廊」，之後也可以改。</p><button class="btn solid block" data-act="obName" style="margin-top:12px">下一步</button>`;
-  if (st === 2) h += `<p class="sec">2 / 3</p><h1 class="serif" style="font-size:30px;margin:0 0 6px">設定你的 AI</h1><p style="margin:0 0 12px">辨識作品和寫解說，需要一把你自己的 AI 金鑰。照著下面的步驟，大約 3 分鐘。</p>${aiSetupHtml('ob')}<div class="row" style="margin-top:12px"><button class="btn ghost grow" data-act="ob" data-v="3">先跳過，之後再設定</button>${(S.settings.keys || {})[S.settings.provider] ? '<button class="btn solid grow" data-act="ob" data-v="3">下一步</button>' : ''}</div>`;
-  if (st === 3) h += `<p class="sec">3 / 3</p><h1 class="serif" style="font-size:30px;margin:0 0 10px">放到手機主畫面</h1><p>這樣打開就像一般的 app，也比較不會被系統清掉資料。</p>
-  <ol class="steps"><li>用 Safari 打開這個網頁</li><li>按下方中間的「分享」按鈕</li><li>往下找「加入主畫面」，按「新增」</li></ol><p class="muted small">Android：在 Chrome 選單裡選「安裝應用程式」。</p><div class="note" style="margin-top:8px">拍照時請允許使用相機和位置，AI 才能判斷你在哪裡。</div><button class="btn solid block" data-act="obDone" style="margin-top:16px">開始使用</button>`;
+  const dots = [0, 1, 2].map(i => `<span class="dot ${i <= Math.min(st, 2) ? 'on' : ''}"></span>`).join('');
+  let h = `<main class="screen nonav" style="padding-top:calc(10px + var(--safe-t))"><div class="row" style="justify-content:space-between;align-items:center"><div class="row" style="gap:6px" aria-label="${tt('Setup progress', '設定進度')}">${dots}</div>${langSwitch()}</div>`;
+  if (st === 0) {
+    const nm = (S.ui.obNameDraft ?? S.settings.name ?? '').trim();
+    h += `<div class="usr" style="margin-top:6px">${WALL_ART.replace('%ART%', tt('Three framed artworks on a gallery wall', '牆上掛著三幅裱框的畫'))}</div>
+    <div class="row" style="justify-content:center;gap:10px;margin-top:8px"><h1 class="serif" style="margin:0;font-size:44px;line-height:1.1">My Gallery</h1><span class="beta">BETA</span></div>
+    <div style="text-align:center">${I.flourish}</div>
+    <p class="serif" style="margin:0 auto;max-width:300px;text-align:center;font-size:22px;line-height:1.45">${tt('The art you love, gathered into a gallery of your own.', '把你遇見的美，收進自己的畫廊。')}</p>
+    <label class="lab" for="obName" style="margin-top:24px">${tt('What should we call you?', '怎麼稱呼你？')}</label>
+    <input id="obName" class="field" maxlength="16" value="${esc(nm)}" placeholder="${tt('e.g. Ruby', '例如：Ruby')}" data-input="obName">
+    <p class="muted small" style="margin:6px 0 0">${tt('Your gallery: ', '你的畫廊：')}<strong style="color:var(--ink)" id="obPreview">${esc(nm ? (I18N.lang === 'en' ? nm + "'s Gallery" : nm + ' 的畫廊') : tt('My Gallery', '我的畫廊'))}</strong></p>
+    <button class="btn solid block" data-act="obName" style="margin-top:18px">${tt('Open my gallery', '打開我的畫廊')}</button>
+    <p class="muted tiny" style="text-align:center;margin:12px 0 0">${tt('Beta · Your photos stay on your phone.', '測試版・照片只存在你的手機裡')}</p>`;
+  }
+  if (st === 1) h += `<p class="sec" style="margin-top:22px">${tt('Step', '步驟')} 1 / 2</p><h1 class="serif" style="font-size:30px;margin:0 0 6px">${tt('Set up your AI', '設定你的 AI')}</h1><p style="margin:0 0 12px">${tt('To recognize artworks and write notes, My Gallery uses your own AI key. It takes about 3 minutes.', '辨識作品和寫解說，需要一把你自己的 AI 金鑰。照著下面的步驟，大約 3 分鐘。')}</p>${aiSetupHtml('ob')}
+    <div class="note" style="margin-top:14px"><strong>${tt('Tip: add a backup AI', '小提醒：可以加一個備用 AI')}</strong><br>${tt('If you add a key for another AI later in Settings, My Gallery switches to it automatically when the first one is busy.', '之後在設定裡再加一把其他 AI 的金鑰，主要的 AI 忙碌時，會自動改用另一個。')}</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:16px">${(S.settings.keys || {})[S.settings.provider] ? `<button class="btn solid block" data-act="ob" data-v="2">${tt('Next', '下一步')}</button>` : ''}<button class="btn ghost block" data-act="ob" data-v="2">${tt('Skip for now', '先跳過，之後再設定')}</button><button class="btn ghost block" data-act="ob" data-v="0">${tt('Back', '上一步')}</button></div>`;
+  if (st === 2) h += `<p class="sec" style="margin-top:22px">${tt('Step', '步驟')} 2 / 2</p><h1 class="serif" style="font-size:30px;margin:0 0 10px">${tt('Add it to your Home Screen', '放到手機主畫面')}</h1><p>${tt('It will open like a regular app, and your photos are less likely to be cleared.', '這樣打開就像一般的 app，照片也比較不會被系統清掉。')}</p>
+    <ol class="steps"><li>${tt('Open this page in Safari', '用 Safari 打開這個網頁')}</li><li>${tt('Tap the Share button at the bottom', '按下方中間的「分享」按鈕')}</li><li>${tt('Choose "Add to Home Screen", then tap Add', '選「加入主畫面」，再按「新增」')}</li></ol>
+    <p class="muted small">${tt('Android: in the Chrome menu, choose "Install app".', 'Android：在 Chrome 選單裡選「安裝應用程式」。')}</p>
+    <div class="note" style="margin-top:8px">${tt('When you take photos, please allow Camera and Location so the AI can tell where you are.', '拍照時請允許使用相機和位置，AI 才能判斷你在哪裡。')}</div>
+    <div class="note" style="margin-top:8px;background:var(--pink)">${tt('Your gallery lives only on this phone. Export a backup in Settings now and then.', '你的畫廊只存在這支手機裡，記得偶爾到設定匯出備份。')}</div>
+    <button class="btn solid block" data-act="obDone" style="margin-top:16px">${tt('Done', '完成')}</button><button class="btn ghost block" data-act="ob" data-v="1">${tt('Back', '上一步')}</button>`;
   return h + `</main>`;
 }
 
@@ -504,6 +540,7 @@ function render() {
   const app = $('#app');
   if (S.route.name === 'camera' && S.settings.onboarded) { if (!CAM.failed) setTimeout(startCam, 0); } else { CAM.failed = false; CAM.error = ''; if (CAM.stream || $('#camVideo')) stopCam(); }
   app.innerHTML = !S.settings.onboarded ? viewOnboarding() : (VIEWS[S.route.name] || viewHome)();
+  I18N.dom(app);
   const rk = S.settings.onboarded ? S.route.name + (S.route.p.id || '') : 'ob' + S.ui.ob;
   if (rk !== render.last) { const sc = app.querySelector('.screen,.cam'); if (sc) sc.classList.add('enter'); render.last = rk; }
   if (S.route.name === 'home' && S.ui.homeView === 'map' && S.settings.onboarded) initMap();
@@ -545,7 +582,7 @@ function currentSession(takenAt, loc) {
 function setSession(placeId, loc, takenAt) { S.session = { placeId, lastAt: takenAt, lat: loc ? loc.lat : (S.session && S.session.placeId === placeId ? S.session.lat : null), lng: loc ? loc.lng : (S.session && S.session.placeId === placeId ? S.session.lng : null) }; DB.setKV('session', S.session); }
 async function newPlace(fields) { const pl = { id: uid(), createdAt: Date.now(), ...fields }; S.places.push(pl); await savePlace(pl); return pl; }
 async function walkPlace(city, loc) {
-  const name = (city || '路上') + '街頭';
+  const name = I18N.lang === 'en' ? `${city || 'Street'} Streets` : (city || '路上') + '街頭';
   const f = S.places.find(p => p.kind === 'walk' && norm(p.city || '') === norm(city || '') && (city || (dist(loc, p) != null && dist(loc, p) < 3)));
   return f || newPlace({ kind: 'walk', name, city: city || '', lat: loc ? loc.lat : null, lng: loc ? loc.lng : null });
 }
@@ -762,21 +799,79 @@ async function makeDna(reword) {
   } catch (e) { toast(e.message); }
   delete S.ui.busy.dna; bgRender();
 }
-async function shareDna() {
-  const d = S.dna && S.dna.data; if (!d) return;
-  const c = document.createElement('canvas'); c.width = 1080; c.height = 1350; const g = c.getContext('2d');
-  g.fillStyle = '#FBF7EF'; g.fillRect(0, 0, 1080, 1350); g.fillStyle = '#F4E3DD'; g.beginPath(); g.roundRect(70, 160, 940, 760, [120, 50, 140, 40]); g.fill();
-  g.fillStyle = '#6B5D55'; g.font = '36px "Noto Sans TC", sans-serif'; g.fillText(`${S.settings.name || '我'}的美感 DNA`, 130, 260);
-  g.fillStyle = '#3A2F2A'; g.font = '700 74px "Noto Serif TC", serif'; wrap(g, d.name, 130, 370, 820, 92);
-  g.font = '34px "Noto Sans TC", sans-serif'; g.fillStyle = '#6B5D55'; g.fillText((d.tags || []).join('  ·  '), 130, 560);
-  g.fillStyle = '#3A2F2A'; g.font = '38px "Noto Sans TC", sans-serif'; wrap(g, d.oneLiner || '', 130, 640, 820, 58);
-  (S.dna.palette || []).forEach((col, i) => { g.fillStyle = col; g.beginPath(); g.arc(190 + i * 175, 1050, 70, 0, Math.PI * 2); g.fill(); });
-  g.fillStyle = '#6B5D55'; g.font = '30px "Noto Sans TC", sans-serif'; g.fillText(`依 ${S.dna.basis} 件作品・My Gallery`, 130, 1240);
-  const blob = await new Promise(r => c.toBlob(r, 'image/png')); const file = new File([blob], 'my-aesthetic-dna.png', { type: 'image/png' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: '我的美感 DNA' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
-  downloadBlob(blob, 'my-aesthetic-dna.png');
+const APP_URL = 'rubykuan0418.github.io/my-gallery';
+/* 美感 DNA 分享圖：三張卡片（我的美感／色彩與策展人筆記／美感輪廓與題材），每張都帶 app 網址 */
+function blobPath(g, cx, cy, r, color) {
+  const pts = [[48, 6], [78, 42], [72, 82], [30, 82], [8, 56], [12, 18]];
+  g.fillStyle = color; g.beginPath();
+  g.moveTo(cx + (48 - 50) * r / 45, cy + (6 - 50) * r / 45);
+  g.bezierCurveTo(cx + (66 - 50) * r / 45, cy + (8 - 50) * r / 45, cx + (82 - 50) * r / 45, cy + (22 - 50) * r / 45, cx + (78 - 50) * r / 45, cy + (42 - 50) * r / 45);
+  g.bezierCurveTo(cx + (75 - 50) * r / 45, cy + (58 - 50) * r / 45, cx + (88 - 50) * r / 45, cy + (72 - 50) * r / 45, cx + (72 - 50) * r / 45, cy + (82 - 50) * r / 45);
+  g.bezierCurveTo(cx + (58 - 50) * r / 45, cy + (91 - 50) * r / 45, cx + (46 - 50) * r / 45, cy + (76 - 50) * r / 45, cx + (30 - 50) * r / 45, cy + (82 - 50) * r / 45);
+  g.bezierCurveTo(cx + (14 - 50) * r / 45, cy + (88 - 50) * r / 45, cx + (2 - 50) * r / 45, cy + (72 - 50) * r / 45, cx + (8 - 50) * r / 45, cy + (56 - 50) * r / 45);
+  g.bezierCurveTo(cx + (13 - 50) * r / 45, cy + (44 - 50) * r / 45, cx + (2 - 50) * r / 45, cy + (30 - 50) * r / 45, cx + (12 - 50) * r / 45, cy + (18 - 50) * r / 45);
+  g.bezierCurveTo(cx + (20 - 50) * r / 45, cy + (8 - 50) * r / 45, cx + (34 - 50) * r / 45, cy + (4 - 50) * r / 45, cx + (48 - 50) * r / 45, cy + (6 - 50) * r / 45);
+  g.fill(); return pts;
 }
-function wrap(g, text, x, y, maxW, lh) { let line = ''; for (const ch of String(text)) { if (g.measureText(line + ch).width > maxW) { g.fillText(line, x, y); line = ch; y += lh; } else line += ch; } if (line) g.fillText(line, x, y); }
+function cardBase(title, idx) {
+  const c = document.createElement('canvas'); c.width = 1080; c.height = 1350; const g = c.getContext('2d');
+  g.fillStyle = '#FBF7EF'; g.fillRect(0, 0, 1080, 1350);
+  g.fillStyle = '#6B5D55'; g.font = '30px "Noto Sans TC", sans-serif'; g.fillText(`${S.settings.name || '我'}的美感 DNA`, 90, 120);
+  g.textAlign = 'right'; g.fillText(`${idx} / 3`, 990, 120); g.textAlign = 'left';
+  g.strokeStyle = '#C2A878'; g.lineWidth = 2; g.beginPath(); g.moveTo(90, 150); g.lineTo(990, 150); g.stroke();
+  g.fillStyle = '#3A2F2A'; g.font = '600 46px "Noto Serif TC", serif'; g.fillText(title, 90, 230);
+  // footer with app url
+  g.fillStyle = '#F4EDE2'; g.fillRect(0, 1210, 1080, 140);
+  g.fillStyle = '#3A2F2A'; g.font = '600 38px "Cormorant Garamond", "Noto Serif TC", serif'; g.fillText('My Gallery', 90, 1275);
+  g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText('把看展收藏，整理成你自己的畫廊', 90, 1315);
+  g.textAlign = 'right'; g.fillStyle = '#4F6652'; g.font = '700 28px "Noto Sans TC", sans-serif'; g.fillText(APP_URL, 990, 1295); g.textAlign = 'left';
+  return { c, g };
+}
+async function dnaCards() {
+  try { await document.fonts.ready; } catch (e) { /* ignore */ }
+  const D = S.dna, d = D.data; const out = [];
+  // 1. 我的美感
+  { const { c, g } = cardBase('我的美感', 1);
+    g.fillStyle = '#F4E3DD'; g.beginPath(); g.roundRect(70, 290, 940, 860, [110, 50, 130, 40]); g.fill();
+    g.fillStyle = '#3A2F2A'; g.font = '700 76px "Noto Serif TC", serif'; let y = wrap(g, d.name || '', 140, 430, 800, 98);
+    g.fillStyle = '#6B5D55'; g.font = '32px "Noto Sans TC", sans-serif'; g.fillText((d.tags || []).join('  ·  '), 140, y + 90);
+    g.fillStyle = '#3A2F2A'; g.font = '40px "Noto Sans TC", sans-serif'; wrap(g, d.oneLiner || '', 140, y + 190, 800, 64);
+    g.fillStyle = '#6B5D55'; g.font = '28px "Noto Sans TC", sans-serif'; g.fillText(`依 ${D.basis} 件作品整理`, 140, 1100);
+    out.push(c); }
+  // 2. 我的色彩與策展人筆記
+  { const { c, g } = cardBase('我的色彩・策展人筆記', 2);
+    (D.palette || []).forEach((col, i) => blobPath(g, 170 + i * 185, 380, 72, col));
+    g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText('從我拍的作品照片計算', 90, 500);
+    g.fillStyle = '#FFFDF8'; g.beginPath(); g.roundRect(70, 550, 940, 600, [40, 90, 40, 100]); g.fill();
+    g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText('策展人筆記', 130, 630);
+    g.fillStyle = '#3A2F2A'; g.font = '600 44px "Noto Serif TC", serif'; let y = wrap(g, d.curatorTitle || '', 130, 710, 820, 62);
+    g.font = '34px "Noto Sans TC", sans-serif'; wrap(g, d.curatorNote || '', 130, y + 80, 820, 56, 1130);
+    out.push(c); }
+  // 3. 美感輪廓與題材
+  { const { c, g } = cardBase('我的美感輪廓・常收藏的題材', 3);
+    const bgs = ['#F4E3DD', '#E3EADD', '#F7EDCF', '#E1E8F0', '#F7DFD3', '#F4E3DD'];
+    DIMS.forEach(([k, l], i) => { const x = 70 + (i % 3) * 315, y = 290 + Math.floor(i / 3) * 210;
+      g.fillStyle = bgs[i]; g.beginPath(); g.roundRect(x, y, 290, 180, [50, 24, 56, 20]); g.fill();
+      g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText(l, x + 30, y + 60);
+      g.fillStyle = '#3A2F2A'; g.font = '700 40px "Noto Sans TC", sans-serif'; g.fillText(((d.dims || {})[k] || dimWord(k, D.avg[k])).slice(0, 7), x + 30, y + 125); });
+    g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText('常收藏的題材', 90, 790);
+    let x = 90; (D.subjects || []).forEach(t => { g.font = '34px "Noto Sans TC", sans-serif'; const w = g.measureText(t).width + 60; if (x + w > 990) return;
+      g.fillStyle = '#E3EADD'; g.beginPath(); g.roundRect(x, 815, w, 72, 30); g.fill(); g.fillStyle = '#3A2F2A'; g.fillText(t, x + 30, 863); x += w + 20; });
+    const recs = (d.recs || []).slice(0, 2);
+    if (recs.length) { g.fillStyle = '#6B5D55'; g.font = '26px "Noto Sans TC", sans-serif'; g.fillText('策展人推薦我認識', 90, 960);
+      recs.forEach((r, i) => { g.fillStyle = '#3A2F2A'; g.font = '600 36px "Noto Serif TC", serif'; g.fillText(r.artist + (r.artistOriginal ? '  ' : ''), 90, 1020 + i * 70);
+        if (r.artistOriginal) { const w = g.measureText(r.artist + '  ').width; g.fillStyle = '#6B5D55'; g.font = 'italic 32px "Cormorant Garamond", serif'; g.fillText(r.artistOriginal, 90 + w, 1020 + i * 70); } }); }
+    out.push(c); }
+  return Promise.all(out.map((c, i) => new Promise(r => c.toBlob(b => r(new File([b], `my-aesthetic-dna-${i + 1}.png`, { type: 'image/png' })), 'image/png'))));
+}
+async function shareDna() {
+  if (!S.dna || !S.dna.data) return;
+  toast('正在做分享圖…');
+  const files = await dnaCards();
+  if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: '我的美感 DNA', text: `我的美感 DNA・用 My Gallery 整理看展收藏：https://${APP_URL}/` }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  files.forEach((f, i) => setTimeout(() => downloadBlob(f, f.name), i * 400));
+}
+function wrap(g, text, x, y, maxW, lh, maxY = 99999) { let line = ''; for (const ch of String(text)) { if (g.measureText(line + ch).width > maxW) { if (y + lh > maxY) { g.fillText(line.slice(0, -1) + '…', x, y); return y; } g.fillText(line, x, y); line = ch; y += lh; } else line += ch; } if (line) g.fillText(line, x, y); return y; }
 function downloadBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); }
 
 /* ---------- 備份 ---------- */
@@ -823,7 +918,7 @@ function openViewer(ps, start) {
   document.body.appendChild(v);
   const img = v.querySelector('img');
   const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
-  const show = () => { img.src = purl(ps[i], 'full'); scale = 1; tx = ty = 0; apply(); v.querySelector('.vcount').textContent = `${ps[i].type}・${i + 1} / ${ps.length}`; v.querySelector('.vprev').style.visibility = i > 0 ? 'visible' : 'hidden'; v.querySelector('.vnext').style.visibility = i < ps.length - 1 ? 'visible' : 'hidden'; };
+  const show = () => { img.src = purl(ps[i], 'full'); scale = 1; tx = ty = 0; apply(); v.querySelector('.vcount').textContent = `${L('type:' + ps[i].type)} · ${i + 1} / ${ps.length}`; v.querySelector('.vprev').style.visibility = i > 0 ? 'visible' : 'hidden'; v.querySelector('.vnext').style.visibility = i < ps.length - 1 ? 'visible' : 'hidden'; };
   const close = () => { v.remove(); if (S.route.name === 'work') { S.ui.photoIdx = i; render(); } };
   v.querySelector('.vclose').onclick = close;
   v.querySelector('.vprev').onclick = () => { if (i > 0) { i--; show(); } };
@@ -848,6 +943,11 @@ function openViewer(ps, start) {
 }
 const ACT = {
   snap: () => snap(),
+  checkUpdate: async () => {
+    if (!navigator.onLine) { toast('目前沒有網路，連上網路後再檢查更新。'); return; } toast('正在檢查更新…');
+    try { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); const caches_ = await caches.keys(); await Promise.all(caches_.map(k => caches.delete(k))); } catch (e) { /* ignore */ }
+    setTimeout(() => location.reload(), 600);
+  },
   nativeCam: () => $('#camInput').click(),
   zoom: () => { const w = workOf(S.route.p.id); const ps = orderedPhotos(w); if (ps.length) openViewer(ps, Math.min(S.ui.photoIdx, ps.length - 1)); },
   tab: d => tab(d.to), go: d => go(d.to, { id: d.id }), back: () => back(),
@@ -948,7 +1048,8 @@ const ACT = {
   importData: () => $('#importInput').click(),
   resetAll: async () => { if (!await ask('確定要清除這支手機上的所有作品、照片和設定嗎？這個動作無法復原，建議先匯出備份。')) return; for (const s of ['photos', 'works', 'places', 'kv']) await DB.clear(s); location.reload(); },
   ob: d => { const k = $('#keyIn'); if (k && k.value.trim()) S.settings.keys[S.settings.provider] = k.value.trim(); saveSettings(); S.ui.ob = +d.v; S.ui.obMsg = ''; render(); scrollTo(0, 0); },
-  obName: async () => { S.settings.name = $('#obName').value.trim(); await saveSettings(); S.ui.ob = 2; render(); scrollTo(0, 0); },
+  obName: async () => { S.settings.name = $('#obName').value.trim(); S.ui.obNameDraft = null; await saveSettings(); S.ui.ob = 1; render(); scrollTo(0, 0); },
+  setLang: async d => { const nm = $('#obName'); if (nm) { S.ui.obNameDraft = nm.value; S.settings.name = nm.value.trim(); } S.settings.lang = d.v; I18N.set(d.v); await saveSettings(); if (d.v === 'zh') location.reload(); else { I18N.dom(document.body); render(); } },
   obDone: async () => { S.settings.onboarded = true; await saveSettings(); tab('home'); }
 };
 async function setAvatar(blob) { await DB.setKV('avatar', await blob.arrayBuffer()); if (S.avatarUrl) URL.revokeObjectURL(S.avatarUrl); S.avatarUrl = URL.createObjectURL(blob); }
@@ -958,6 +1059,7 @@ document.addEventListener('click', e => {
   const fn = ACT[el.dataset.act]; if (!fn) return;
   e.preventDefault(); fn(el.dataset, el, e);
 });
+document.addEventListener('input', e => { if (e.target.id === 'obName') { const v = e.target.value.trim(); const pv = $('#obPreview'); if (pv) pv.textContent = v ? (I18N.lang === 'en' ? v + "'s Gallery" : v + ' 的畫廊') : tt('My Gallery', '我的畫廊'); } });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'nameIn') ACT.saveName(); });
 $('#camInput').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (S.route.name !== 'camera') tab('camera'); handleFiles(f, true); });
 $('#libInput').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (S.route.name === 'camera' || S.route.name !== 'home') tab('home'); S.ui.homeView = 'works'; handleFiles(f, false); });
@@ -972,7 +1074,10 @@ window.addEventListener('online', () => { setTimeout(retryPending, 1500); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(runQueue, 800); });
 
 async function loadAll() {
-  S.settings = { ...DEFAULTS, ...(await DB.getKV('settings', {})) };
+  const saved = await DB.getKV('settings', {});
+  S.settings = { ...DEFAULTS, ...saved };
+  if (!saved.lang && saved.onboarded) S.settings.lang = 'zh'; // 舊使用者維持中文
+  I18N.set(S.settings.lang);
   S.settings.keys = S.settings.keys || {}; S.settings.models = S.settings.models || {};
   [S.works, S.places, S.photos] = await Promise.all([DB.all('works'), DB.all('places'), DB.all('photos')]);
   S.works = S.works.map(reviveWork); S.photos = S.photos.map(revivePhoto);
@@ -998,7 +1103,12 @@ async function loadAll() {
 }
 (async function start() {
   try { await loadAll(); } catch (e) { $('#app').innerHTML = '<p style="padding:30px">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式的 Safari 或 Chrome 打開。</p>'; return; }
-  S.route = { name: 'home', p: {} }; render();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  S.route = { name: 'home', p: {} }; I18N.watch(); I18N.dom(document.body); render();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update().catch(() => {})).catch(() => {});
+    // 有新版時自動換上（只重新整理一次）
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded || typing()) return; reloaded = true; location.reload(); });
+  }
   setTimeout(() => { runQueue(); retryPending(); }, 1500);
 })();
